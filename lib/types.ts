@@ -67,11 +67,38 @@ export interface Task {
   startDate: string;
   endDate: string;
   comments: string[];
+  // Заполнены только у задач, созданных из типовой задачи.
+  template?: TaskTemplateRef;
+  groups?: CheckpointGroup[];
 }
 
 export interface BaselineTask {
   startDate: string;
   endDate: string;
+}
+
+// Контрольная точка типовой задачи. Копируется из шаблона при создании и дальше
+// принадлежит клиенту: текст, пояснение и состав точек можно менять.
+export interface Checkpoint {
+  code: string;        // «ДДС-1.5», стабильный ключ
+  title: string;
+  aside: string;       // ремарка в скобках, например «параллельно с интеграцией»
+  gate: boolean;       // контрольные ворота — без них спринт не считается закрытым
+  noteTitle: string;   // заголовок пояснения; пустой, если пояснения нет
+  note: string;        // текст пояснения
+  done: boolean;
+}
+
+export interface CheckpointGroup {
+  title: string;       // «ФМ-1а. Сбор данных…» или пустая строка
+  result: string;      // «Проверочный результат», может быть пустым
+  items: Checkpoint[];
+}
+
+export interface TaskTemplateRef {
+  code: string;        // код шаблона, «ДДС»
+  subCode?: string;    // код спринта, «ДДС-1» — только у подзадач
+  week?: number;       // номер спринта — только у подзадач
 }
 
 // Срез сроков дорожной карты: дата снимка (ISO) → id задачи → её сроки на тот момент.

@@ -471,6 +471,102 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   cursor: pointer;
 }
 
+.template-button { color: var(--navy); border-color: #b9cae3; background: #f8fbff; }
+.template-button:hover { background: #edf4fd; }
+
+/* Чипы кодов типовых задач и прогресс по контрольным точкам */
+.code-chip { flex: 0 0 auto; padding: 2px 6px; border-radius: 4px; background: var(--blue-soft); color: var(--navy-2); font-size: 10px; font-weight: 700; letter-spacing: .2px; font-variant-numeric: tabular-nums; }
+.code-chip-parent { background: var(--navy); color: #fff; }
+.progress-chip { display: inline-flex; align-items: center; gap: 5px; color: #627087; font-variant-numeric: tabular-nums; }
+.progress-chip.progress-done { color: #087a59; }
+
+/* Диалог «Типовая задача» */
+.tpl-search { position: relative; display: block; margin: 0 0 10px; }
+.tpl-search input { width: 100%; height: 37px; padding: 0 10px 0 34px; border: 1px solid #d6dde7; border-radius: 7px; font-size: 13px; }
+.tpl-search input:focus { border-color: #85aadd; box-shadow: 0 0 0 3px rgba(42, 120, 223, .1); }
+.tpl-search svg { position: absolute; left: 11px; top: 11px; color: #8a94a4; pointer-events: none; }
+.tpl-list { margin: 0 0 8px; max-height: 52vh; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; }
+.tpl-row { width: 100%; min-height: 40px; padding: 7px 12px; display: grid; grid-template-columns: 52px 1fr auto auto; gap: 12px; align-items: center; border: 0; border-bottom: 1px solid var(--soft-line); background: #fff; text-align: left; font-size: 13px; }
+.tpl-row:last-child { border-bottom: 0; }
+.tpl-row:hover { background: #f8fbff; }
+.tpl-row b { font-weight: 560; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tpl-row .code-chip { justify-self: start; }
+.tpl-meta { color: #7b8798; font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tpl-exists { color: #a75e08; font-size: 11px; white-space: nowrap; }
+.tpl-empty { padding: 18px; color: #8993a3; font-size: 12px; text-align: center; }
+.tpl-premise { margin: -4px 0 12px; }
+.field-note button { border: 0; padding: 0; background: none; color: var(--blue); font-size: 10px; font-weight: 650; }
+.field-note-warn { color: #a75e08; }
+.tpl-preview { margin: 4px 0 14px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.tpl-preview-head { padding: 9px 14px; display: flex; align-items: center; justify-content: space-between; background: #f8fafc; border-bottom: 1px solid var(--soft-line); color: #4e5b70; font-size: 11px; font-weight: 650; }
+.tpl-preview-head span:last-child { font-weight: 500; color: #7b8798; }
+.tpl-preview-row { padding: 10px 14px; display: grid; grid-template-columns: 62px 112px 1fr auto; gap: 12px; align-items: center; border-bottom: 1px solid var(--soft-line); font-size: 12px; }
+.tpl-preview-row:last-of-type { border-bottom: 0; }
+.tpl-week { color: #8a94a4; font-size: 11px; font-weight: 600; }
+.tpl-dates { color: #354258; font-variant-numeric: tabular-nums; }
+.tpl-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tpl-name b { font-weight: 560; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tpl-count { color: #627087; font-size: 11px; white-space: nowrap; }
+.tpl-preview-total { padding: 10px 14px; display: flex; gap: 18px; background: #fbfcfe; color: #405066; font-size: 12px; border-top: 1px solid var(--soft-line); }
+.tpl-preview-total b { color: var(--navy); }
+.modal-back { display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 0; background: none; color: #5b6880; font-size: 13px; font-weight: 600; }
+.modal-back:hover { color: var(--navy); }
+
+/* Чек-лист контрольных точек в карточке спринта */
+.check-section { margin: 4px 0 14px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.check-head { padding: 11px 14px; display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; background: #f8fafc; border-bottom: 1px solid var(--soft-line); }
+.check-head strong { font-size: 12px; color: #172239; }
+.check-count { font-size: 12px; color: #627087; font-variant-numeric: tabular-nums; }
+.check-count-done { color: #087a59; font-weight: 650; }
+.check-bar { grid-column: 1 / -1; display: block; height: 5px; border-radius: 3px; background: #e6ebf2; overflow: hidden; }
+.check-bar i { display: block; height: 100%; border-radius: 3px; background: var(--blue); transition: width .25s ease; }
+.check-bar i.check-bar-done { background: var(--teal); }
+.check-group { padding: 10px 14px 4px; border-bottom: 1px solid var(--soft-line); }
+.check-group h4 { margin: 0 0 2px; font-size: 12px; color: #172239; }
+.check-result { margin: 0 0 6px; color: #627087; font-size: 11px; }
+.check-result b { font-weight: 650; color: #4e5b70; }
+.check-item { display: grid; grid-template-columns: 18px 44px 1fr auto; gap: 4px 10px; align-items: start; padding: 7px 0; border-top: 1px solid #f2f4f8; }
+.check-group .check-item:first-of-type { border-top: 0; }
+.check-item input[type="checkbox"] { margin: 2px 0 0; width: 15px; height: 15px; accent-color: var(--teal); cursor: pointer; }
+.check-code { padding-top: 2px; color: #8a94a4; font-size: 10px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.check-item > label { font-size: 12px; line-height: 1.45; color: #1f2a40; cursor: pointer; }
+.check-item > label.check-gate { font-weight: 700; }
+.check-aside { color: #8a94a4; font-style: italic; }
+.check-item-done > label { color: #7b8798; text-decoration: line-through; text-decoration-color: #c4ccd8; }
+.check-item-done > label.check-gate { text-decoration: none; color: #087a59; }
+.check-tools { display: inline-flex; gap: 2px; }
+.check-tools button { width: 22px; height: 22px; border: 0; border-radius: 5px; display: grid; place-items: center; background: transparent; color: #9aa4b4; }
+.check-tools button:hover { background: #eaf1fb; color: var(--navy); }
+.check-tools .info-button { border: 1px solid #c9d6e8; border-radius: 50%; background: #fff; color: var(--navy-2); font-size: 11px; font-weight: 700; font-family: Georgia, serif; font-style: italic; }
+.check-tools .info-button:hover, .check-tools .info-button.info-open { background: var(--blue-soft); border-color: #9db8dd; }
+.check-note { grid-column: 2 / -1; margin: 2px 0 4px; padding: 9px 12px; border-left: 3px solid #9db8dd; border-radius: 0 8px 8px 0; background: #f3f7fc; color: #33425a; font-size: 12px; line-height: 1.5; }
+.check-note b { display: block; margin-bottom: 2px; color: var(--navy); }
+.check-edit { grid-column: 3 / -1; display: grid; gap: 8px; margin: 2px 0 6px; padding: 10px 12px; border: 1px solid #c9d6e8; border-radius: 8px; background: #fbfcfe; }
+.check-edit label { display: grid; gap: 4px; color: #4e5b70; font-size: 10px; font-weight: 650; }
+.check-edit input, .check-edit textarea { width: 100%; padding: 7px 9px; border: 1px solid #d6dde7; border-radius: 7px; background: #fff; font-size: 12px; font-weight: 400; font-family: inherit; }
+.check-edit textarea { resize: vertical; min-height: 58px; line-height: 1.45; }
+.check-edit-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.check-edit-actions button { min-height: 30px; padding: 0 10px; font-size: 12px; }
+.add-check { width: 100%; padding: 9px 14px; display: flex; align-items: center; gap: 6px; border: 0; border-top: 1px dashed #d6dde7; background: #fbfcfe; color: var(--navy-2); font-size: 12px; font-weight: 650; text-align: left; }
+.add-check:hover { background: #f3f7fc; }
+.all-done { margin: 0 0 14px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; border-radius: 8px; background: var(--teal-soft); color: #087a59; font-size: 12px; }
+.all-done button { margin-left: auto; border: 1px solid #9fd8c2; border-radius: 6px; padding: 5px 10px; background: #fff; color: #087a59; font-size: 12px; font-weight: 650; }
+
+/* Сводка спринтов в карточке надзадачи */
+.sprint-list { margin: 0 0 14px; border: 1px solid var(--line); border-radius: 0 0 10px 10px; overflow: hidden; }
+.sprint-head { border-radius: 10px 10px 0 0; border: 1px solid var(--line); border-bottom: 0; }
+.sprint-row { width: 100%; padding: 10px 14px; display: grid; grid-template-columns: 52px 1fr 130px 90px; gap: 12px; align-items: center; border: 0; border-bottom: 1px solid var(--soft-line); background: #fff; text-align: left; font-size: 12px; }
+.sprint-row:last-child { border-bottom: 0; }
+.sprint-row:hover { background: #f8fbff; }
+.sprint-row b { font-weight: 560; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sprint-dates { color: #627087; font-variant-numeric: tabular-nums; }
+.sprint-progress { display: flex; align-items: center; gap: 8px; color: #627087; font-size: 11px; font-variant-numeric: tabular-nums; }
+.sprint-progress .check-bar { flex: 1; grid-column: auto; }
+
+/* Тост-уведомление внизу экрана */
+.toast { position: fixed; z-index: 200; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 10px 16px; border-radius: 8px; background: #172239; color: #fff; font-size: 13px; box-shadow: 0 10px 30px rgba(8,21,43,.3); opacity: 0; transition: opacity .2s ease; pointer-events: none; }
+.toast.show { opacity: 1; }
+
 .primary, .secondary, .delete-button, .complete-button {
   min-height: 37px;
   border-radius: 6px;
@@ -523,9 +619,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   text-align: left;
   font-size: 12px;
   cursor: pointer;
+  transition: background .5s ease;
 }
 
 .task-table-row:hover { background: #f8fbff; }
+.task-table-row.fresh { background: #fff8ea; }
 .task-table-row > span { min-width: 0; }
 .task-table-row b { overflow: hidden; font-weight: 560; text-overflow: ellipsis; white-space: nowrap; }
 .task-parent b { font-weight: 750; }
@@ -1275,6 +1373,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .section-head .primary, .compact-head .primary { width: 100%; }
   .roadmap-actions { width: 100%; flex-wrap: wrap; }
   .roadmap-actions > .secondary, .roadmap-actions > .primary { width: calc(50% - 5px); }
+  .tpl-preview-row, .tpl-row { grid-template-columns: 1fr; gap: 2px; }
+  .sprint-row { grid-template-columns: 1fr; }
   .baseline-control { width: 100%; }
   .baseline-control .secondary { width: 100%; }
   .baseline-menu { width: 100%; }

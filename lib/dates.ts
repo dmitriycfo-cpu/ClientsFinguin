@@ -17,6 +17,14 @@ export function isValidDateValue(value: string) {
   return !Number.isNaN(parseDate(value).getTime());
 }
 
+// Короткий формат «ДД.ММ» — для карточек типовых задач и тостов.
+// Очищенная или испорченная дата показывается прочерком, а не «NaN.NaN».
+export function formatDayMonth(value: string) {
+  if (!isValidDateValue(value)) return "—";
+  const date = parseDate(value);
+  return String(date.getDate()).padStart(2, "0") + "." + String(date.getMonth() + 1).padStart(2, "0");
+}
+
 export function addDays(value: string, days: number) {
   const date = parseDate(value);
   date.setDate(date.getDate() + days);
@@ -40,4 +48,24 @@ export function isLastDayOfMonth(date: Date) {
 
 export function monthsBetween(from: Date, to: Date) {
   return (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
+}
+
+const WEEKDAY_NAMES = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
+
+// Понедельник недели, в которую попадает дата.
+export function startOfWeek(value: string) {
+  const date = parseDate(value);
+  date.setDate(date.getDate() - (date.getDay() + 6) % 7);
+  return toISO(date);
+}
+
+// Ближайший понедельник: сама дата, если это понедельник, иначе следующий.
+export function nextMonday(value: string) {
+  const date = parseDate(value);
+  date.setDate(date.getDate() + (8 - date.getDay()) % 7);
+  return toISO(date);
+}
+
+export function weekdayName(value: string) {
+  return WEEKDAY_NAMES[parseDate(value).getDay()];
 }

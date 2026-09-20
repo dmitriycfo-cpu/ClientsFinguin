@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
+  ClipboardCheck,
   Clock3,
   History,
   Lightbulb,
@@ -22,7 +23,13 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import AccountingPolicy from "@/components/accounting-policy";
-import { addDays, differenceInDays, parseDate, toISO } from "@/lib/dates";
+import CheckpointsEditor, { ProgressRing } from "@/components/checkpoints-editor";
+import ModalShell from "@/components/modal-shell";
+import PersonSelect, { normalizePerson } from "@/components/person-select";
+import type { PersonPickerProps } from "@/components/person-select";
+import TemplateDialog from "@/components/template-dialog";
+import { addDays, differenceInDays, formatDayMonth, parseDate, toISO } from "@/lib/dates";
+import { plural } from "@/lib/plural";
 import {
   frequencyTitle,
   getScopeCounts,
@@ -32,7 +39,7 @@ import {
 } from "@/lib/meeting-series";
 import type { MeetingSeriesScope } from "@/lib/meeting-series";
 import type { CSSProperties, FormEvent } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type {
   DashboardData,
   Idea,
@@ -46,6 +53,8 @@ import type {
   Task,
   TaskStatus,
 } from "@/lib/types";
+import { checkpointProgress, nextCheckpointCode } from "@/lib/typical-tasks";
+import type { TypicalTaskTemplate } from "@/lib/typical-tasks";
 
 const TASK_STATUSES: TaskStatus[] = ["Не начато", "В работе", "На проверке", "Завершено", "Просрочено"];
 const IDEA_STATUSES: IdeaStatus[] = ["Новая", "На обсуждении", "Одобрена", "В реализации", "Реализована", "Отклонена"];
@@ -62,8 +71,33 @@ const MEETING_REPEATS: Array<{ value: MeetingRepeat; label: string }> = [
   { value: "monthly", label: "Каждый месяц" },
   { value: "quarterly", label: "Каждый квартал" },
 ];
-const now = new Date();
-const TODAY = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
+// Дату «сегодня» нельзя считать на уровне модуля: страницу Next.js рендерит статически,
+// и значение застыло бы на времени сборки, а гидратация уже готовую разметку не пересчитывает.
+// Поэтому дату берём вызовом функции — в браузере она всегда отдаёт текущий день.
+// Полдень, а не полночь, — как и в parseDate: так переход на летнее время не сдвигает день.
+function startOfToday() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
+}
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1, 12);
+}
+
+// Смена суток приходит из внешнего источника — системных часов, — поэтому текущий день
+// читаем через useSyncExternalStore. Он единственный корректно разводит два снимка:
+// серверный уходит в статическую разметку, а сразу после гидратации React перерисовывает
+// компонент с браузерным. Опрос раз в минуту нужен, чтобы вкладка пережила полночь.
+function subscribeToDayChange(onDayChange: () => void) {
+  const timer = setInterval(onDayChange, 60_000);
+  return () => clearInterval(timer);
+}
+
+// Снимок — строка "ГГГГ-ММ-ДД", а не Date: React сравнивает снимки по значению,
+// и новый объект Date на каждом вызове вызывал бы бесконечный перерендер.
+function getTodayKey() {
+  return toISO(startOfToday());
+}
 const MONTHS = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 const MONTHS_GENITIVE = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
 
@@ -74,6 +108,7 @@ type ModalState =
   | { kind: "meeting"; item: Meeting | null }
   | { kind: "regular-task"; item: RegularTask | null }
   | { kind: "regular-period"; task: RegularTask; monthStart: string }
+  | { kind: "template" }
   | null;
 
 function formatShortDate(value: string) {
@@ -111,34 +146,34 @@ function getMeetingRepeatDates(startValue: string, repeat: MeetingRepeat) {
 }
 
 function pluralMeetings(count: number) {
-  const lastTwo = count % 100;
-  const last = count % 10;
-  if (lastTwo >= 11 && lastTwo <= 14) return "встреч";
-  if (last === 1) return "встреча";
-  if (last >= 2 && last <= 4) return "встречи";
-  return "встреч";
+  return plural(count, "встреча", "встречи", "встреч");
 }
 
 function pluralDays(count: number) {
-  const lastTwo = count % 100;
-  const last = count % 10;
-  if (lastTwo >= 11 && lastTwo <= 14) return "дней";
-  if (last === 1) return "день";
-  if (last >= 2 && last <= 4) return "дня";
-  return "дней";
+  return plural(count, "день", "дня", "дней");
 }
 
 function pluralTasks(count: number) {
-  const lastTwo = count % 100;
-  const last = count % 10;
-  if (lastTwo >= 11 && lastTwo <= 14) return "задач";
-  if (last === 1) return "задача";
-  if (last >= 2 && last <= 4) return "задачи";
-  return "задач";
+  return plural(count, "задача", "задачи", "задач");
 }
 
-function isTaskOverdue(task: Task) {
-  return task.status !== "Завершено" && (task.status === "Просрочено" || parseDate(task.endDate) < TODAY);
+function pluralSprints(count: number) {
+  return plural(count, "спринт", "спринта", "спринтов");
+}
+
+function pluralSubtasks(count: number) {
+  return plural(count, "подзадача", "подзадачи", "подзадач");
+}
+
+// Спринты типовой задачи — только подзадачи с кодом спринта, по порядку недель.
+function templateSprints(tasks: Task[], parentId: string | null) {
+  return tasks
+    .filter((task) => task.parentId === parentId && task.template?.subCode)
+    .sort((a, b) => (a.template?.week ?? 0) - (b.template?.week ?? 0));
+}
+
+function isTaskOverdue(task: Task, today: Date) {
+  return task.status !== "Завершено" && (task.status === "Просрочено" || parseDate(task.endDate) < today);
 }
 
 function taskOverlapsMonth(task: Task, monthStart: Date) {
@@ -228,15 +263,15 @@ function getPlannedDates(task: RegularTask, monthStartValue: string) {
 
 type RegularStatus = "Выполнено" | "С опозданием" | "Просрочено" | "Запланировано" | "Частично";
 
-function occurrenceStatus(plannedDate: string, record?: RegularRecord): RegularStatus {
+function occurrenceStatus(plannedDate: string, record: RegularRecord | undefined, today: Date): RegularStatus {
   if (record?.actualDate) return record.actualDate <= plannedDate ? "Выполнено" : "С опозданием";
-  return parseDate(plannedDate) < TODAY ? "Просрочено" : "Запланировано";
+  return parseDate(plannedDate) < today ? "Просрочено" : "Запланировано";
 }
 
-function regularMonthStatus(task: RegularTask, monthStart: string): RegularStatus | null {
+function regularMonthStatus(task: RegularTask, monthStart: string, today: Date): RegularStatus | null {
   const plannedDates = getPlannedDates(task, monthStart);
   if (plannedDates.length === 0) return null;
-  const statuses = plannedDates.map((date) => occurrenceStatus(date, task.records[date]));
+  const statuses = plannedDates.map((date) => occurrenceStatus(date, task.records[date], today));
   if (statuses.includes("Просрочено")) return "Просрочено";
   if (statuses.every((status) => status === "Выполнено")) return "Выполнено";
   if (statuses.every((status) => status === "Выполнено" || status === "С опозданием")) return "С опозданием";
@@ -250,10 +285,6 @@ function regularStatusClass(status: RegularStatus) {
   if (status === "С опозданием") return "regular-status regular-status-late";
   if (status === "Частично") return "regular-status regular-status-partial";
   return "regular-status regular-status-planned";
-}
-
-function normalizePerson(value: string) {
-  return value.trim().replace(/\s+/g, " ");
 }
 
 function splitPeople(value: string) {
@@ -271,85 +302,6 @@ function mergePeople(people: string[], additions: string[]) {
     result.push(person);
   });
   return result;
-}
-
-type PersonPickerProps = {
-  people: string[];
-  onAddPerson: (person: string) => void;
-  onDeletePerson: (person: string) => void;
-};
-
-function PersonSelect({
-  value,
-  onChange,
-  people,
-  onAddPerson,
-  onDeletePerson,
-}: PersonPickerProps & { value: string; onChange: (value: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const normalizedQuery = normalizePerson(query);
-  const filteredPeople = people.filter((person) => !normalizedQuery || person.toLocaleLowerCase("ru").includes(normalizedQuery.toLocaleLowerCase("ru")));
-  const hasExactMatch = people.some((person) => person.toLocaleLowerCase("ru") === normalizedQuery.toLocaleLowerCase("ru"));
-
-  function choose(person: string) {
-    const normalized = normalizePerson(person);
-    if (!normalized) return;
-    onChange(normalized);
-    onAddPerson(normalized);
-    setQuery("");
-    setOpen(false);
-  }
-
-  return (
-    <div className="person-picker" onBlur={(event) => {
-      if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
-    }}>
-      <input
-        value={value}
-        onChange={(event) => {
-          setQuery(event.target.value);
-          onChange(event.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => {
-          setQuery("");
-          setOpen(true);
-        }}
-        onClick={() => setOpen(true)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && normalizePerson(value)) {
-            event.preventDefault();
-            choose(value);
-          }
-          if (event.key === "Escape") setOpen(false);
-        }}
-        placeholder="Выберите или введите имя"
-        autoComplete="off"
-      />
-      <ChevronDown className="person-picker-chevron" size={15} />
-      {open && (
-        <div className="person-dropdown">
-          {normalizedQuery && !hasExactMatch && (
-            <button type="button" className="person-add-option" onMouseDown={(event) => event.preventDefault()} onClick={() => choose(normalizedQuery)}>
-              <Plus size={14} />Добавить «{normalizedQuery}»
-            </button>
-          )}
-          {filteredPeople.map((person) => (
-            <div className="person-option" key={person}>
-              <button type="button" className="person-option-select" onMouseDown={(event) => event.preventDefault()} onClick={() => choose(person)}>
-                <span>{person}</span>{person === value && <Check size={14} />}
-              </button>
-              <button type="button" className="person-option-delete" title="Удалить из справочника" aria-label={"Удалить " + person + " из справочника"} onMouseDown={(event) => event.preventDefault()} onClick={() => onDeletePerson(person)}>
-                <Trash2 size={13} />
-              </button>
-            </div>
-          ))}
-          {filteredPeople.length === 0 && !normalizedQuery && <div className="person-empty">Справочник пока пуст</div>}
-        </div>
-      )}
-    </div>
-  );
 }
 
 function PeopleSelect({
@@ -477,44 +429,6 @@ function CommentsEditor({
   );
 }
 
-function ModalShell({
-  title,
-  subtitle,
-  children,
-  onClose,
-}: {
-  title: string;
-  subtitle: string;
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleEscape);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", handleEscape);
-      document.body.style.overflow = "";
-    };
-  }, [onClose]);
-
-  return (
-    <div className="modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
-    }}>
-      <section className="modal" role="dialog" aria-modal="true" aria-label={title}>
-        <header className="modal-head">
-          <div><h3>{title}</h3><p>{subtitle}</p></div>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Закрыть"><X size={20} /></button>
-        </header>
-        {children}
-      </section>
-    </div>
-  );
-}
-
 function TaskDialog({
   item,
   tasks,
@@ -524,6 +438,7 @@ function TaskDialog({
   onClose,
   onSave,
   onDelete,
+  onOpenTask,
 }: {
   item: Task | null;
   tasks: Task[];
@@ -533,6 +448,7 @@ function TaskDialog({
   onClose: () => void;
   onSave: (task: Task) => void;
   onDelete: (id: string) => void;
+  onOpenTask: (task: Task) => void;
 }) {
   const parents = tasks.filter((task) => !task.parentId && task.id !== item?.id);
   const hasChildren = item ? tasks.some((task) => task.parentId === item.id) : false;
@@ -546,11 +462,27 @@ function TaskDialog({
     title: "",
     assignee: "",
     status: "Не начато",
-    startDate: toISO(TODAY),
-    endDate: toISO(new Date(2026, 7, 21, 12)),
+    startDate: toISO(startOfToday()),
+    endDate: addDays(toISO(startOfToday()), 7),
     comments: [],
   });
   const [error, setError] = useState("");
+
+  const isTemplateSprint = Boolean(item?.template?.subCode);
+  const isTemplateParent = Boolean(item?.template) && !isTemplateSprint;
+  const sprints = isTemplateParent && item ? templateSprints(tasks, item.id) : [];
+  const sprintItems = isTemplateSprint ? (draft.groups ?? []).flatMap((group) => group.items) : [];
+  const sprintAllDone = sprintItems.length > 0 && sprintItems.every((checkpoint) => checkpoint.done);
+  const parentProgress = isTemplateParent && item ? checkpointProgress(item, tasks) ?? { done: 0, total: 0 } : { done: 0, total: 0 };
+
+  const dialogTitle = item?.template
+    ? (item.template.subCode || item.template.code) + ". " + draft.title
+    : item ? "Редактировать задачу" : "Новая задача";
+  const dialogSubtitle = isTemplateSprint && item
+    ? "Типовая задача " + item.template!.code + " · спринт " + item.template!.week + " из " + templateSprints(tasks, item.parentId).length + " · неделя " + formatDayMonth(draft.startDate) + " — " + formatDayMonth(draft.endDate)
+    : isTemplateParent
+      ? "Типовая задача · " + sprints.length + " " + pluralSprints(sprints.length) + " · " + formatDayMonth(draft.startDate) + " — " + formatDayMonth(draft.endDate) + " · контрольных точек " + parentProgress.done + " из " + parentProgress.total
+      : "Сроки сразу появятся на диаграмме Ганта";
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -559,26 +491,53 @@ function TaskDialog({
     if (!draft.startDate || !draft.endDate || parseDate(draft.startDate) > parseDate(draft.endDate)) {
       return setError("Проверьте даты начала и окончания.");
     }
-    onSave({ ...draft, parentId: taskType === "parent" ? null : draft.parentId, title: draft.title.trim(), assignee: draft.assignee.trim() });
+    onSave({ ...draft, parentId: item?.template ? draft.parentId : taskType === "parent" ? null : draft.parentId, title: draft.title.trim(), assignee: draft.assignee.trim() });
   }
 
   return (
-    <ModalShell title={item ? "Редактировать задачу" : "Новая задача"} subtitle="Сроки сразу появятся на диаграмме Ганта" onClose={onClose}>
+    <ModalShell title={dialogTitle} subtitle={dialogSubtitle} onClose={onClose}>
       <form onSubmit={submit}>
         <div className="modal-body">
-          <label className="field field-wide">Название задачи<input autoFocus value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Например, Подготовить форму ДДС" /></label>
+          <label className="field field-wide">{isTemplateSprint ? "Название подзадачи" : "Название задачи"}<input autoFocus={!item?.template} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Например, Подготовить форму ДДС" /></label>
           <div className="form-grid">
-            <label className="field">Тип задачи<select value={taskType} onChange={(event) => {
+            {!item?.template && <label className="field">Тип задачи<select value={taskType} onChange={(event) => {
               const value = event.target.value as "parent" | "subtask";
               setTaskType(value);
               if (value === "parent") setDraft({ ...draft, parentId: null });
-            }}><option value="subtask" disabled={parents.length === 0 || hasChildren}>Подзадача</option><option value="parent">Надзадача</option></select><ChevronDown size={15} /></label>
+            }}><option value="subtask" disabled={parents.length === 0 || hasChildren}>Подзадача</option><option value="parent">Надзадача</option></select><ChevronDown size={15} /></label>}
             <div className="field"><span>Ответственный</span><PersonSelect value={draft.assignee} onChange={(assignee) => setDraft({ ...draft, assignee })} people={people} onAddPerson={onAddPerson} onDeletePerson={onDeletePerson} /></div>
-            {taskType === "subtask" && <label className="field field-wide">К какой надзадаче прикрепить<select value={draft.parentId || ""} onChange={(event) => setDraft({ ...draft, parentId: event.target.value || null })}><option value="">Выберите надзадачу</option>{parents.map((task) => <option value={task.id} key={task.id}>{task.title}</option>)}</select><ChevronDown size={15} /></label>}
+            {!item?.template && taskType === "subtask" && <label className="field field-wide">К какой надзадаче прикрепить<select value={draft.parentId || ""} onChange={(event) => setDraft({ ...draft, parentId: event.target.value || null })}><option value="">Выберите надзадачу</option>{parents.map((task) => <option value={task.id} key={task.id}>{task.title}</option>)}</select><ChevronDown size={15} /></label>}
+            {item?.template && <label className="field">Статус<select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as TaskStatus })}>{TASK_STATUSES.map((status) => <option key={status}>{status}</option>)}</select><ChevronDown size={15} /></label>}
             <label className="field">Дата начала<input type="date" value={draft.startDate} onChange={(event) => setDraft({ ...draft, startDate: event.target.value })} /></label>
             <label className="field">Дедлайн<input type="date" value={draft.endDate} onChange={(event) => setDraft({ ...draft, endDate: event.target.value })} /></label>
-            <label className="field field-wide">Статус<select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as TaskStatus })}>{TASK_STATUSES.map((status) => <option key={status}>{status}</option>)}</select><ChevronDown size={15} /></label>
+            {!item?.template && <label className="field field-wide">Статус<select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as TaskStatus })}>{TASK_STATUSES.map((status) => <option key={status}>{status}</option>)}</select><ChevronDown size={15} /></label>}
           </div>
+          {isTemplateSprint && (
+            <>
+              <CheckpointsEditor groups={draft.groups ?? []} nextCode={() => nextCheckpointCode(draft)} onChange={(groups) => setDraft({ ...draft, groups })} />
+              {sprintAllDone && draft.status !== "Завершено" && (
+                <div className="all-done">✓ Все контрольные точки отмечены — спринт можно закрывать.<button type="button" onClick={() => setDraft({ ...draft, status: "Завершено" })}>Отметить завершённым</button></div>
+              )}
+            </>
+          )}
+          {isTemplateParent && (
+            <>
+              <div className="check-head sprint-head"><strong>Спринты</strong><span className="check-count">Сроки подзадач меняются в их карточках</span></div>
+              <div className="sprint-list">
+                {sprints.map((sprint) => {
+                  const progress = checkpointProgress(sprint, tasks) ?? { done: 0, total: 0 };
+                  return (
+                    <button type="button" className="sprint-row" key={sprint.id} onClick={() => onOpenTask(sprint)}>
+                      <span className="code-chip">{sprint.template?.subCode}</span>
+                      <b>{sprint.title}</b>
+                      <span className="sprint-dates">{formatDayMonth(sprint.startDate)} — {formatDayMonth(sprint.endDate)}</span>
+                      <span className="sprint-progress"><span className="check-bar"><i className={progress.total > 0 && progress.done === progress.total ? "check-bar-done" : ""} style={{ width: (progress.total > 0 ? progress.done / progress.total * 100 : 0) + "%" }} /></span>{progress.done}/{progress.total}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
           <CommentsEditor comments={draft.comments} onChange={(comments) => setDraft({ ...draft, comments })} />
           {error && <p className="form-error">{error}</p>}
         </div>
@@ -676,7 +635,7 @@ function MeetingDialog({
   const [draft, setDraft] = useState<Meeting>(() => item ? { ...item, comments: [...item.comments] } : {
     id: crypto.randomUUID(),
     title: "",
-    plannedDate: defaultDate || toISO(TODAY),
+    plannedDate: defaultDate || toISO(startOfToday()),
     plannedTime: "10:00",
     participants: "",
     agenda: "",
@@ -846,7 +805,7 @@ function RegularTaskDialog({
     title: "",
     assignee: "",
     frequency: "monthly",
-    anchorDate: toISO(TODAY),
+    anchorDate: toISO(startOfToday()),
     description: "",
     records: {},
   });
@@ -909,6 +868,9 @@ function RegularPeriodDialog({
   const plannedDates = getPlannedDates(task, monthStart);
   const [records, setRecords] = useState<Record<string, RegularRecord>>(() => structuredClone(task.records));
   const monthDate = parseDate(monthStart);
+  // Карточка открывается только по клику, то есть заведомо после гидратации,
+  // поэтому дату здесь можно взять напрямую — расхождения с разметкой сервера не будет.
+  const today = startOfToday();
 
   function updateRecord(plannedDate: string, field: keyof RegularRecord, value: string) {
     setRecords((current) => ({
@@ -924,7 +886,7 @@ function RegularPeriodDialog({
           {task.description && <p className="regular-description">{task.description}</p>}
           {plannedDates.map((plannedDate) => {
             const record = records[plannedDate] || { actualDate: "", note: "" };
-            const status = occurrenceStatus(plannedDate, record);
+            const status = occurrenceStatus(plannedDate, record, today);
             return (
               <section className="regular-occurrence" key={plannedDate}>
                 <div className="regular-occurrence-head"><div><small>Нормативная дата</small><strong>{formatShortDate(plannedDate)}</strong></div><em className={regularStatusClass(status)}>{status}</em></div>
@@ -940,7 +902,7 @@ function RegularPeriodDialog({
   );
 }
 
-export default function Dashboard({ initialData }: { initialData: DashboardData }) {
+export default function Dashboard({ initialData, serverToday, templates }: { initialData: DashboardData; serverToday: string; templates: TypicalTaskTemplate[] }) {
   const [data, setData] = useState<DashboardData>(initialData);
   const [activePage, setActivePage] = useState<"roadmap" | "policy">("roadmap");
   const [pageMenuOpen, setPageMenuOpen] = useState(false);
@@ -966,9 +928,29 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
   const [editingClient, setEditingClient] = useState(false);
   const [clientDraft, setClientDraft] = useState(initialData.clientName);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [calendarMonth, setCalendarMonth] = useState(new Date(2026, 7, 1, 12));
+  // Пока пользователь не пролистнул календарь руками, он следует за текущим месяцем.
+  // После первого ручного перехода выбор живёт здесь и больше никуда не съезжает.
+  const [pickedCalendarMonth, setPickedCalendarMonth] = useState<Date | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ganttScrollRef = useRef<HTMLDivElement | null>(null);
+  // Тост — обобщённое короткое уведомление внизу экрана; пока используется только после
+  // добавления типовой задачи, но не завязано на неё напрямую.
+  const [toast, setToast] = useState("");
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Свежедобавленные строки таблицы подсвечиваются на несколько секунд, затем класс снимается.
+  const [freshTaskIds, setFreshTaskIds] = useState<Set<string>>(() => new Set());
+  const freshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Гант и его ширина пересчитываются от data.tasks, поэтому дату для прокрутки после
+  // добавления типовой задачи откладываем сюда (в ref, а не в state — установка её значения
+  // не должна сама по себе быть сайд-эффектом рендера) и прокручиваем в эффекте — уже по новому диапазону.
+  const pendingScrollDateRef = useRef<string | null>(null);
+
+  // Серверный снимок — дата, вшитая в статическую разметку. Совпадение с HTML снимает
+  // расхождение при гидратации, а сразу после неё React возьмёт браузерный снимок.
+  const getServerToday = useCallback(() => serverToday, [serverToday]);
+  const todayKey = useSyncExternalStore(subscribeToDayChange, getTodayKey, getServerToday);
+  const today = useMemo(() => parseDate(todayKey), [todayKey]);
+  const calendarMonth = useMemo(() => pickedCalendarMonth ?? startOfMonth(today), [pickedCalendarMonth, today]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1025,12 +1007,23 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
     if (saveTimer.current) clearTimeout(saveTimer.current);
   }, []);
 
+  useEffect(() => () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    if (freshTimer.current) clearTimeout(freshTimer.current);
+  }, []);
+
+  function showToast(message: string) {
+    setToast(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(""), 2500);
+  }
+
   const ordered = useMemo(() => orderedTasks(data.tasks), [data.tasks]);
   const filteredTasks = useMemo(() => ordered.filter((task) => {
     if (ganttFilter === "В работе") return task.status === "В работе" || task.status === "На проверке";
-    if (ganttFilter === "Просрочено") return isTaskOverdue(task);
+    if (ganttFilter === "Просрочено") return isTaskOverdue(task, today);
     return true;
-  }), [ordered, ganttFilter]);
+  }), [ordered, ganttFilter, today]);
   const visibleTasks = useMemo(() => filteredTasks.filter((task) => !task.parentId || !collapsedTaskIds.has(task.parentId)), [filteredTasks, collapsedTaskIds]);
 
   const baselineDates = useMemo(() => Object.keys(data.baselines || {}).sort(), [data.baselines]);
@@ -1070,18 +1063,18 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
   const shiftedCount = useMemo(() => (baseline ? data.tasks.filter((task) => baselineShiftOf(task)).length : 0), [baseline, data.tasks, baselineShiftOf]);
 
   const openTasks = data.tasks.filter((task) => task.status !== "Завершено");
-  const overdueCount = openTasks.filter(isTaskOverdue).length;
-  const nearestTask = [...openTasks].filter((task) => parseDate(task.endDate) >= TODAY).sort((a, b) => parseDate(a.endDate).getTime() - parseDate(b.endDate).getTime())[0];
-  const nextMeeting = [...data.meetings].filter((meeting) => meeting.status === "planned" && parseDate(meeting.plannedDate) >= TODAY).sort((a, b) => (a.plannedDate + a.plannedTime).localeCompare(b.plannedDate + b.plannedTime))[0];
+  const overdueCount = openTasks.filter((task) => isTaskOverdue(task, today)).length;
+  const nearestTask = [...openTasks].filter((task) => parseDate(task.endDate) >= today).sort((a, b) => parseDate(a.endDate).getTime() - parseDate(b.endDate).getTime())[0];
+  const nextMeeting = [...data.meetings].filter((meeting) => meeting.status === "planned" && parseDate(meeting.plannedDate) >= today).sort((a, b) => (a.plannedDate + a.plannedTime).localeCompare(b.plannedDate + b.plannedTime))[0];
 
   const planningCoverage = useMemo(() => {
     const workTasks = data.tasks.filter((task) => task.parentId || !data.tasks.some((child) => child.parentId === task.id));
     return [0, 1].map((monthOffset) => {
-      const monthStart = new Date(TODAY.getFullYear(), TODAY.getMonth() + monthOffset, 1, 12);
+      const monthStart = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1, 12);
       const count = workTasks.filter((task) => taskOverlapsMonth(task, monthStart)).length;
       return { monthStart, count, hasPlan: count > 0 };
     });
-  }, [data.tasks]);
+  }, [data.tasks, today]);
   const missingPlanMonths = planningCoverage.filter((month) => !month.hasPlan);
   const hasTwoMonthPlan = missingPlanMonths.length === 0;
   const planningMessage = hasTwoMonthPlan
@@ -1092,8 +1085,8 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
 
   const ganttRange = useMemo(() => {
     const baselineDatesInPlay = baseline ? Object.values(baseline).flatMap((base) => [parseDate(base.startDate), parseDate(base.endDate)]) : [];
-    const dates = [TODAY, ...data.tasks.flatMap((task) => [parseDate(task.startDate), parseDate(task.endDate)]), ...baselineDatesInPlay].filter((date) => !Number.isNaN(date.getTime()));
-    const minDate = dates.length ? new Date(Math.min(...dates.map((date) => date.getTime()))) : TODAY;
+    const dates = [today, ...data.tasks.flatMap((task) => [parseDate(task.startDate), parseDate(task.endDate)]), ...baselineDatesInPlay].filter((date) => !Number.isNaN(date.getTime()));
+    const minDate = dates.length ? new Date(Math.min(...dates.map((date) => date.getTime()))) : today;
     const maxDate = dates.length ? new Date(Math.max(...dates.map((date) => date.getTime()))) : new Date(2026, 8, 30, 12);
     const start = new Date(minDate.getFullYear(), minDate.getMonth(), 1, 12);
     const end = new Date(maxDate.getFullYear(), maxDate.getMonth() + 1, 0, 12);
@@ -1110,7 +1103,7 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
       cursor.setMonth(cursor.getMonth() + 1);
     }
     return { start, end, totalDays, months };
-  }, [data.tasks, baseline]);
+  }, [data.tasks, baseline, today]);
 
   const ideaRows = useMemo(() => {
     const search = ideaSearch.trim().toLowerCase();
@@ -1166,9 +1159,9 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
   }, [data.meetings, selectedDate, calendarMonth]);
 
   const regularMonths = useMemo(() => Array.from({ length: 12 }, (_, index) => {
-    const date = new Date(TODAY.getFullYear(), TODAY.getMonth() + index, 1, 12);
+    const date = new Date(today.getFullYear(), today.getMonth() + index, 1, 12);
     return { date, iso: toISO(date), label: MONTHS[date.getMonth()] + " " + date.getFullYear() };
-  }), []);
+  }), [today]);
   const regularRows = useMemo(() => orderedRegularTasks(data.regularTasks).filter((task) => !task.parentId || !collapsedRegularIds.has(task.parentId)), [data.regularTasks, collapsedRegularIds]);
 
   function addPerson(person: string) {
@@ -1197,6 +1190,29 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
     setModal(null);
   }
 
+  function addTemplateTasks(newTasks: Task[]) {
+    commit((current) => ({
+      ...current,
+      people: mergePeople(current.people, [newTasks[0].assignee]),
+      tasks: [...current.tasks, ...newTasks],
+    }));
+    setModal(null);
+    // Под фильтром «В работе» или «Просрочено» новые строки не прошли бы отбор,
+    // поэтому показываем всю дорожную карту — задача должна быть видна сразу.
+    setGanttFilter("Все");
+    // Гант ещё не знает про новые задачи — реальную прокрутку делаем в эффекте,
+    // когда ganttRange и ширина таймлайна пересчитаются от обновлённого data.tasks.
+    pendingScrollDateRef.current = newTasks[0].startDate;
+
+    const parent = newTasks[0];
+    const childCount = newTasks.length - 1;
+    setFreshTaskIds(new Set(newTasks.map((task) => task.id)));
+    if (freshTimer.current) clearTimeout(freshTimer.current);
+    freshTimer.current = setTimeout(() => setFreshTaskIds(new Set()), 3500);
+
+    showToast("Добавлено: " + (parent.template?.code ?? "") + " · " + childCount + " " + pluralSubtasks(childCount) + ", " + formatDayMonth(parent.startDate) + " — " + formatDayMonth(parent.endDate));
+  }
+
   function saveIdea(idea: Idea) {
     commit((current) => ({
       ...current,
@@ -1214,7 +1230,7 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
 
   function focusMeetingDate(plannedDate: string) {
     setSelectedDate(plannedDate);
-    setCalendarMonth(new Date(parseDate(plannedDate).getFullYear(), parseDate(plannedDate).getMonth(), 1, 12));
+    setPickedCalendarMonth(startOfMonth(parseDate(plannedDate)));
   }
 
   // Поля, одинаковые для всей серии: если правка их не трогает (например, встречу просто
@@ -1357,7 +1373,7 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
   }
 
   function moveCalendarMonth(offset: number) {
-    setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1, 12));
+    setPickedCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + offset, 1, 12));
     setSelectedDate(null);
   }
 
@@ -1370,24 +1386,34 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
     };
   }
 
-  const todayPercent = (Math.round((TODAY.getTime() - ganttRange.start.getTime()) / 86400000) / ganttRange.totalDays) * 100;
+  const todayPercent = (Math.round((today.getTime() - ganttRange.start.getTime()) / 86400000) / ganttRange.totalDays) * 100;
   const ganttTimelineWidth = Math.max(760, ganttRange.months.length * 300);
   const weekLineCount = Math.ceil(ganttRange.totalDays / 7) + 1;
   const calendarDefaultDate = selectedDate || toISO(new Date(
     calendarMonth.getFullYear(),
     calendarMonth.getMonth(),
-    calendarMonth.getFullYear() === TODAY.getFullYear() && calendarMonth.getMonth() === TODAY.getMonth() ? TODAY.getDate() : 1,
+    calendarMonth.getFullYear() === today.getFullYear() && calendarMonth.getMonth() === today.getMonth() ? today.getDate() : 1,
     12
   ));
 
-  function scrollGanttToToday() {
+  function scrollGanttToDate(value: string) {
     const scroller = ganttScrollRef.current;
     if (!scroller) return;
-    const currentMonthStart = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1, 12);
-    const daysFromRangeStart = Math.max(0, Math.round((currentMonthStart.getTime() - ganttRange.start.getTime()) / 86400000));
+    const monthStart = startOfMonth(parseDate(value));
+    const daysFromRangeStart = Math.max(0, Math.round((monthStart.getTime() - ganttRange.start.getTime()) / 86400000));
     const monthPosition = daysFromRangeStart / ganttRange.totalDays * ganttTimelineWidth;
     scroller.scrollTo({ left: Math.max(0, monthPosition - 16), behavior: "smooth" });
   }
+
+  // Прокрутка после добавления типовой задачи: ganttRange и ganttTimelineWidth к этому моменту
+  // уже посчитаны заново от обновлённого data.tasks, а DOM таймлайна перерисован. Флаг лежит
+  // в ref, а не в state, — эффект не переиспускает рендер, а только двигает существующий DOM.
+  useEffect(() => {
+    if (!pendingScrollDateRef.current) return;
+    scrollGanttToDate(pendingScrollDateRef.current);
+    pendingScrollDateRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ganttRange, ganttTimelineWidth]);
 
   return (
     <main className="dashboard-shell">
@@ -1497,7 +1523,7 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
                     type="date"
                     value={baselineDate}
                     min={baselineDates[0]}
-                    max={toISO(TODAY)}
+                    max={toISO(today)}
                     onChange={(event) => setBaselineDate(event.target.value)}
                   />
                   <small className="baseline-hint">
@@ -1511,7 +1537,8 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
                 </div>
               ) : null}
             </div>
-            <button className="secondary today-button" onClick={scrollGanttToToday}><CalendarDays size={16} />Сегодня</button>
+            <button className="secondary today-button" onClick={() => scrollGanttToDate(toISO(today))}><CalendarDays size={16} />Сегодня</button>
+            <button className="secondary template-button" onClick={() => setModal({ kind: "template" })}><ClipboardCheck size={16} />Типовая задача</button>
             <button className="primary" onClick={() => setModal({ kind: "task", item: null })}><Plus size={17} />Новая задача</button>
           </div>
         </div>
@@ -1521,20 +1548,23 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
             {visibleTasks.map((task) => {
               const childCount = data.tasks.filter((child) => child.parentId === task.id).length;
               const isCollapsed = collapsedTaskIds.has(task.id);
+              const progress = checkpointProgress(task, data.tasks);
               return (
-                <div className={"task-table-row " + (task.parentId ? "task-child" : "task-parent")} key={task.id} role="button" tabIndex={0} onClick={() => setModal({ kind: "task", item: task })} onKeyDown={(event) => {
+                <div className={"task-table-row " + (task.parentId ? "task-child" : "task-parent") + (freshTaskIds.has(task.id) ? " fresh" : "")} key={task.id} role="button" tabIndex={0} onClick={() => setModal({ kind: "task", item: task })} onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") setModal({ kind: "task", item: task });
                 }}>
                   <span className="task-title-cell">
                     {!task.parentId && childCount > 0 && <button type="button" className="task-toggle" aria-label={isCollapsed ? "Развернуть подзадачи" : "Свернуть подзадачи"} aria-expanded={!isCollapsed} onClick={(event) => { event.stopPropagation(); toggleParent(task.id); }}>{isCollapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}</button>}
                     {!task.parentId && childCount === 0 && <span className="toggle-spacer" />}
                     {task.parentId && <i />}
+                    {task.template && <span className={"code-chip" + (task.parentId ? "" : " code-chip-parent")}>{task.template.subCode || task.template.code}</span>}
                     <b>{task.title}</b>
                     {!task.parentId && childCount > 0 && <small className="child-count">{childCount}</small>}
+                    {progress && progress.total > 0 && <small className={"progress-chip" + (progress.done === progress.total ? " progress-done" : "")} title={"Контрольные точки: " + progress.done + " из " + progress.total}><ProgressRing done={progress.done} total={progress.total} />{progress.done}/{progress.total}</small>}
                     {task.comments.length > 0 && <small><MessageSquareText size={12} />{task.comments.length}</small>}
                   </span>
                   <span className="assignee-cell">{task.assignee || "—"}</span>
-                  <span><em className={taskStatusClass(isTaskOverdue(task) ? "Просрочено" : task.status)}>{isTaskOverdue(task) ? "Просрочено" : task.status}</em></span>
+                  <span><em className={taskStatusClass(isTaskOverdue(task, today) ? "Просрочено" : task.status)}>{isTaskOverdue(task, today) ? "Просрочено" : task.status}</em></span>
                   <span className="deadline-cell">{formatShortDate(task.endDate)}<MoreHorizontal size={15} /></span>
                 </div>
               );
@@ -1553,9 +1583,10 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
                     ? "Базовый план на " + formatShortDate(baselineKey) + ": " + formatShortDate(shift.base.startDate) + " — " + formatShortDate(shift.base.endDate)
                       + (shift.days === 0 ? "" : ", дедлайн " + (shift.days > 0 ? "+" : "−") + Math.abs(shift.days) + " " + pluralDays(Math.abs(shift.days)))
                     : undefined;
+                  const progress = checkpointProgress(task, data.tasks);
                   return (
                     <div className="gantt-row" key={task.id}>
-                      <button aria-label={"Редактировать " + task.title} onClick={() => setModal({ kind: "task", item: task })} className={"gantt-bar gantt-" + (isTaskOverdue(task) ? "overdue" : task.status === "Завершено" ? "done" : task.status === "Не начато" ? "planned" : "active") + (task.parentId ? "" : " gantt-parent")} style={ganttBarStyle(task.startDate, task.endDate)}><span>{task.title}</span><i /></button>
+                      <button aria-label={"Редактировать " + task.title} onClick={() => setModal({ kind: "task", item: task })} className={"gantt-bar gantt-" + (isTaskOverdue(task, today) ? "overdue" : task.status === "Завершено" ? "done" : task.status === "Не начато" ? "planned" : "active") + (task.parentId ? "" : " gantt-parent")} style={ganttBarStyle(task.startDate, task.endDate)} title={task.title + " · " + formatShortDate(task.startDate) + " — " + formatShortDate(task.endDate) + (progress && progress.total > 0 ? " · точки " + progress.done + "/" + progress.total : "")}><span>{task.title}</span><i /></button>
                       {shift?.segments.map((segment) => <i key={segment.id} className={"gantt-delta" + (segment.inside ? "" : " gantt-delta-outside") + (task.parentId ? "" : " gantt-delta-parent")} style={ganttBarStyle(segment.from, segment.to)} title={shiftTitle} />)}
                     </div>
                   );
@@ -1601,7 +1632,7 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
                   const fillClass = cell.hasPlan && cell.hasFact ? "day-plan-fact" : cell.hasFact ? "day-fact" : cell.hasPlan ? "day-plan" : "";
                   return <button key={cell.iso} className={"calendar-day " + fillClass + (cell.inMonth ? "" : " outside") + (selectedDate === cell.iso ? " selected" : "")} onClick={() => {
                     setSelectedDate((current) => current === cell.iso ? null : cell.iso);
-                    if (!cell.inMonth) setCalendarMonth(new Date(cell.date.getFullYear(), cell.date.getMonth(), 1, 12));
+                    if (!cell.inMonth) setPickedCalendarMonth(startOfMonth(cell.date));
                   }} aria-pressed={selectedDate === cell.iso} aria-label={cell.count ? cell.count + " встреч на " + formatShortDate(cell.iso) : "Нет встреч на " + formatShortDate(cell.iso)}><span>{cell.date.getDate()}</span>{cell.count > 1 && <em>{cell.count}</em>}</button>;
                 })}
               </div>
@@ -1664,7 +1695,7 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
                   {regularMonths.map((month) => {
                     const plannedDates = getPlannedDates(task, month.iso);
                     const actualDates = plannedDates.map((date) => task.records[date]?.actualDate).filter(Boolean);
-                    const status = regularMonthStatus(task, month.iso);
+                    const status = regularMonthStatus(task, month.iso, today);
                     const hasNote = plannedDates.some((date) => Boolean(task.records[date]?.note));
                     return (
                       <button className={"regular-month-cell " + (status ? "has-occurrence" : "is-empty")} disabled={!status} key={month.iso} onClick={() => setModal({ kind: "regular-period", task, monthStart: month.iso })}>
@@ -1684,7 +1715,8 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
       </section>
       </> : <AccountingPolicy reports={data.reports} people={data.people} onChange={(reports) => commit((current) => ({ ...current, reports }))} />}
 
-      {modal?.kind === "task" && <TaskDialog item={modal.item} tasks={data.tasks} people={data.people} onAddPerson={addPerson} onDeletePerson={deletePerson} onClose={() => setModal(null)} onSave={saveTask} onDelete={deleteTask} />}
+      {modal?.kind === "task" && <TaskDialog key={modal.item?.id ?? "new"} item={modal.item} tasks={data.tasks} people={data.people} onAddPerson={addPerson} onDeletePerson={deletePerson} onClose={() => setModal(null)} onSave={saveTask} onDelete={deleteTask} onOpenTask={(task) => setModal({ kind: "task", item: task })} />}
+      {modal?.kind === "template" && <TemplateDialog templates={templates} tasks={data.tasks} people={data.people} today={todayKey} onAddPerson={addPerson} onDeletePerson={deletePerson} onClose={() => setModal(null)} onAdd={addTemplateTasks} />}
       {modal?.kind === "idea" && <IdeaDialog item={modal.item} people={data.people} onAddPerson={addPerson} onDeletePerson={deletePerson} onClose={() => setModal(null)} onSave={saveIdea} onDelete={deleteIdea} />}
       {modal?.kind === "meeting" && <MeetingDialog item={modal.item} defaultDate={calendarDefaultDate} people={data.people} seriesCount={modal.item ? getSeriesOccurrences(data.meetings, modal.item).length : 1} onAddPerson={addPerson} onDeletePerson={deletePerson} onClose={() => setModal(null)} onSave={saveMeeting} onDelete={deleteMeeting} />}
       {seriesPrompt && (
@@ -1705,6 +1737,7 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
       )}
       {modal?.kind === "regular-task" && <RegularTaskDialog item={modal.item} tasks={data.regularTasks} people={data.people} onAddPerson={addPerson} onDeletePerson={deletePerson} onClose={() => setModal(null)} onSave={saveRegularTask} onDelete={deleteRegularTask} />}
       {modal?.kind === "regular-period" && <RegularPeriodDialog task={modal.task} monthStart={modal.monthStart} onClose={() => setModal(null)} onSave={saveRegularTask} />}
+      <div className={"toast" + (toast ? " show" : "")} role="status" aria-live="polite">{toast}</div>
     </main>
   );
 }
