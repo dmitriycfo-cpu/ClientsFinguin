@@ -477,6 +477,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 /* Чипы кодов типовых задач и прогресс по контрольным точкам */
 .code-chip { flex: 0 0 auto; padding: 2px 6px; border-radius: 4px; background: var(--blue-soft); color: var(--navy-2); font-size: 10px; font-weight: 700; letter-spacing: .2px; font-variant-numeric: tabular-nums; }
 .code-chip-parent { background: var(--navy); color: #fff; }
+.task-label { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .progress-chip { display: inline-flex; align-items: center; gap: 5px; color: #627087; font-variant-numeric: tabular-nums; }
 .progress-chip.progress-done { color: #087a59; }
 
@@ -611,8 +612,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 .task-table-row {
   width: 100%;
-  height: 46px;
-  padding: 0 12px 0 16px;
+  min-height: 46px;
+  padding: 9px 12px 9px 16px;
   border: 0;
   border-bottom: 1px solid var(--soft-line);
   background: #fff;
@@ -625,9 +626,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .task-table-row:hover { background: #f8fbff; }
 .task-table-row.fresh { background: #fff8ea; }
 .task-table-row > span { min-width: 0; }
-.task-table-row b { overflow: hidden; font-weight: 560; text-overflow: ellipsis; white-space: nowrap; }
+.task-table-row b { display: block; font-weight: 560; white-space: normal; overflow-wrap: anywhere; line-height: 1.45; }
 .task-parent b { font-weight: 750; }
-.task-title-cell { display: flex; align-items: center; gap: 7px; overflow: hidden; }
+.task-title-cell { display: flex; align-items: flex-start; gap: 7px; padding-right: 12px; }
+.task-title-content { display: grid; gap: 5px; min-width: 0; flex: 1; }
+.task-title-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .task-toggle {
   width: 22px;
   height: 24px;
@@ -642,10 +645,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 .task-toggle:hover { background: #eaf1fb; color: var(--navy); }
 .toggle-spacer { width: 17px; flex: 0 0 17px; }
-.task-title-cell > i { width: 13px; height: 18px; margin-left: 4px; border-bottom: 1px solid #ccd5e0; border-left: 1px solid #ccd5e0; }
+.task-title-cell > i { flex: 0 0 13px; height: 18px; margin-left: 4px; border-bottom: 1px solid #ccd5e0; border-left: 1px solid #ccd5e0; }
 .task-title-cell small {
-  margin-left: auto;
-  padding-right: 6px;
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -736,7 +738,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .gantt-row { position: relative; height: 46px; border-bottom: 1px solid rgba(237, 241, 245, .76); }
 .gantt-bar {
   position: absolute;
-  top: 16px;
+  top: 50%;
+  transform: translateY(-50%);
   min-width: 14px;
   height: 13px;
   border: 0;
@@ -761,7 +764,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    цвета, за пределами — на собственную подложку, чтобы читаться на пустой шкале. */
 .gantt-delta {
   position: absolute;
-  top: 16px;
+  top: 50%;
+  transform: translateY(-50%);
   min-width: 3px;
   height: 13px;
   border-radius: 7px;

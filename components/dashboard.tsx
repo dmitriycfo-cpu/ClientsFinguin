@@ -469,10 +469,12 @@ function TaskDialog({
   const [error, setError] = useState("");
 
   const isTemplateSprint = Boolean(item?.template?.subCode);
+  const [labelsText, setLabelsText] = useState(() => (item?.labels ?? []).join(", "));
   const isTemplateParent = Boolean(item?.template) && !isTemplateSprint;
+  const hasChecklist = taskType === "subtask" || (draft.groups?.length ?? 0) > 0;
   const sprints = isTemplateParent && item ? templateSprints(tasks, item.id) : [];
-  const sprintItems = isTemplateSprint ? (draft.groups ?? []).flatMap((group) => group.items) : [];
-  const sprintAllDone = sprintItems.length > 0 && sprintItems.every((checkpoint) => checkpoint.done);
+  const checklistItems = (draft.groups ?? []).flatMap((group) => group.items);
+  const checklistAllDone = checklistItems.length > 0 && checklistItems.every((checkpoint) => checkpoint.done);
   const parentProgress = isTemplateParent && item ? checkpointProgress(item, tasks) ?? { done: 0, total: 0 } : { done: 0, total: 0 };
 
   const dialogTitle = item?.template
@@ -491,7 +493,8 @@ function TaskDialog({
     if (!draft.startDate || !draft.endDate || parseDate(draft.startDate) > parseDate(draft.endDate)) {
       return setError("Проверьте даты начала и окончания.");
     }
-    onSave({ ...draft, parentId: item?.template ? draft.parentId : taskType === "parent" ? null : draft.parentId, title: draft.title.trim(), assignee: draft.assignee.trim() });
+    const labels = [...new Set(labelsText.split(",").map((label) => label.trim()).filter(Boolean))];
+    onSave({ ...draft, labels, parentId: item?.template ? draft.parentId : taskType === "parent" ? null : draft.parentId, title: draft.title.trim(), assignee: draft.assignee.trim() });
   }
 
   return (
@@ -499,6 +502,7 @@ function TaskDialog({
       <form onSubmit={submit}>
         <div className="modal-body">
           <label className="field field-wide">{isTemplateSprint ? "Название подзадачи" : "Название задачи"}<input autoFocus={!item?.template} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Например, Подготовить форму ДДС" /></label>
+          {!item?.template && <label className="field field-wide">Метки<input value={labelsText} onChange={(event) => setLabelsText(event.target.value)} placeholder="Например, ДДС, Отчётность" aria-describedby="task-labels-hint" /><span className="field-note" id="task-labels-hint">Несколько меток разделяйте запятой. Чтобы убрать метку, удалите её из поля.</span></label>}
           <div className="form-grid">
             {!item?.template && <label className="field">Тип задачи<select value={taskType} onChange={(event) => {
               const value = event.target.value as "parent" | "subtask";
@@ -512,11 +516,11 @@ function TaskDialog({
             <label className="field">Дедлайн<input type="date" value={draft.endDate} onChange={(event) => setDraft({ ...draft, endDate: event.target.value })} /></label>
             {!item?.template && <label className="field field-wide">Статус<select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as TaskStatus })}>{TASK_STATUSES.map((status) => <option key={status}>{status}</option>)}</select><ChevronDown size={15} /></label>}
           </div>
-          {isTemplateSprint && (
+          {hasChecklist && (
             <>
               <CheckpointsEditor groups={draft.groups ?? []} nextCode={() => nextCheckpointCode(draft)} onChange={(groups) => setDraft({ ...draft, groups })} />
-              {sprintAllDone && draft.status !== "Завершено" && (
-                <div className="all-done">✓ Все контрольные точки отмечены — спринт можно закрывать.<button type="button" onClick={() => setDraft({ ...draft, status: "Завершено" })}>Отметить завершённым</button></div>
+              {checklistAllDone && draft.status !== "Завершено" && (
+                <div className="all-done">✓ Все контрольные точки отмечены — {isTemplateSprint ? "спринт" : "задачу"} можно закрывать.<button type="button" onClick={() => setDraft({ ...draft, status: "Завершено" })}>Отметить завершённым</button></div>
               )}
             </>
           )}
@@ -933,6 +937,8 @@ export default function Dashboard({ initialData, serverToday, templates }: { ini
   const [pickedCalendarMonth, setPickedCalendarMonth] = useState<Date | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ganttScrollRef = useRef<HTMLDivElement | null>(null);
+  const taskTableRef = useRef<HTMLDivElement | null>(null);
+  const [taskRowHeights, setTaskRowHeights] = useState<Record<string, number>>({});
   // Тост — обобщённое короткое уведомление внизу экрана; пока используется только после
   // добавления типовой задачи, но не завязано на неё напрямую.
   const [toast, setToast] = useState("");
@@ -1025,6 +1031,22 @@ export default function Dashboard({ initialData, serverToday, templates }: { ini
     return true;
   }), [ordered, ganttFilter, today]);
   const visibleTasks = useMemo(() => filteredTasks.filter((task) => !task.parentId || !collapsedTaskIds.has(task.parentId)), [filteredTasks, collapsedTaskIds]);
+
+  // Таблица и шкала прокручиваются отдельно. Измеряем строки после переноса текста,
+  // чтобы полосы сроков оставались напротив задач при изменении ширины и фильтров.
+  useEffect(() => {
+    if (activePage !== "roadmap") return;
+    const rows = taskTableRef.current?.querySelectorAll<HTMLElement>("[data-task-id]");
+    if (!rows?.length) return;
+    const observer = new ResizeObserver(() => {
+      const heights: Record<string, number> = {};
+      rows.forEach((row) => { heights[row.dataset.taskId!] = row.getBoundingClientRect().height; });
+      setTaskRowHeights((previous) => Object.keys(previous).length === rows.length
+        && Object.entries(heights).every(([id, height]) => previous[id] === height) ? previous : heights);
+    });
+    rows.forEach((row) => observer.observe(row));
+    return () => observer.disconnect();
+  }, [visibleTasks, activePage]);
 
   const baselineDates = useMemo(() => Object.keys(data.baselines || {}).sort(), [data.baselines]);
   // Показываем ближайший снимок на выбранную дату или раньше — так дату можно назвать любую,
@@ -1543,25 +1565,30 @@ export default function Dashboard({ initialData, serverToday, templates }: { ini
           </div>
         </div>
         <div className="gantt-grid">
-          <div className="task-table">
+          <div className="task-table" ref={taskTableRef}>
             <div className="task-table-head"><span>Задача</span><span>Ответственный</span><span>Статус</span><span>Срок</span></div>
             {visibleTasks.map((task) => {
               const childCount = data.tasks.filter((child) => child.parentId === task.id).length;
               const isCollapsed = collapsedTaskIds.has(task.id);
               const progress = checkpointProgress(task, data.tasks);
               return (
-                <div className={"task-table-row " + (task.parentId ? "task-child" : "task-parent") + (freshTaskIds.has(task.id) ? " fresh" : "")} key={task.id} role="button" tabIndex={0} onClick={() => setModal({ kind: "task", item: task })} onKeyDown={(event) => {
+                <div className={"task-table-row " + (task.parentId ? "task-child" : "task-parent") + (freshTaskIds.has(task.id) ? " fresh" : "")} key={task.id} data-task-id={task.id} role="button" tabIndex={0} onClick={() => setModal({ kind: "task", item: task })} onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") setModal({ kind: "task", item: task });
                 }}>
                   <span className="task-title-cell">
                     {!task.parentId && childCount > 0 && <button type="button" className="task-toggle" aria-label={isCollapsed ? "Развернуть подзадачи" : "Свернуть подзадачи"} aria-expanded={!isCollapsed} onClick={(event) => { event.stopPropagation(); toggleParent(task.id); }}>{isCollapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}</button>}
                     {!task.parentId && childCount === 0 && <span className="toggle-spacer" />}
                     {task.parentId && <i />}
-                    {task.template && <span className={"code-chip" + (task.parentId ? "" : " code-chip-parent")}>{task.template.subCode || task.template.code}</span>}
-                    <b>{task.title}</b>
-                    {!task.parentId && childCount > 0 && <small className="child-count">{childCount}</small>}
-                    {progress && progress.total > 0 && <small className={"progress-chip" + (progress.done === progress.total ? " progress-done" : "")} title={"Контрольные точки: " + progress.done + " из " + progress.total}><ProgressRing done={progress.done} total={progress.total} />{progress.done}/{progress.total}</small>}
-                    {task.comments.length > 0 && <small><MessageSquareText size={12} />{task.comments.length}</small>}
+                    <span className="task-title-content">
+                      {(task.template || Boolean(task.labels?.length) || childCount > 0 || (progress && progress.total > 0) || task.comments.length > 0) && <span className="task-title-meta">
+                        {task.template && <span className={"code-chip" + (task.parentId ? "" : " code-chip-parent")}>{task.template.subCode || task.template.code}</span>}
+                        {task.labels?.map((label) => <span className={"code-chip task-label" + (task.parentId ? "" : " code-chip-parent")} key={label}>{label}</span>)}
+                        {!task.parentId && childCount > 0 && <small className="child-count" title={childCount + " " + pluralSubtasks(childCount)}>{childCount}</small>}
+                        {progress && progress.total > 0 && <small className={"progress-chip" + (progress.done === progress.total ? " progress-done" : "")} title={"Контрольные точки: " + progress.done + " из " + progress.total}><ProgressRing done={progress.done} total={progress.total} />{progress.done}/{progress.total}</small>}
+                        {task.comments.length > 0 && <small><MessageSquareText size={12} />{task.comments.length}</small>}
+                      </span>}
+                      <b>{task.title}</b>
+                    </span>
                   </span>
                   <span className="assignee-cell">{task.assignee || "—"}</span>
                   <span><em className={taskStatusClass(isTaskOverdue(task, today) ? "Просрочено" : task.status)}>{isTaskOverdue(task, today) ? "Просрочено" : task.status}</em></span>
@@ -1585,7 +1612,7 @@ export default function Dashboard({ initialData, serverToday, templates }: { ini
                     : undefined;
                   const progress = checkpointProgress(task, data.tasks);
                   return (
-                    <div className="gantt-row" key={task.id}>
+                    <div className="gantt-row" key={task.id} style={{ height: taskRowHeights[task.id] ?? 46 }}>
                       <button aria-label={"Редактировать " + task.title} onClick={() => setModal({ kind: "task", item: task })} className={"gantt-bar gantt-" + (isTaskOverdue(task, today) ? "overdue" : task.status === "Завершено" ? "done" : task.status === "Не начато" ? "planned" : "active") + (task.parentId ? "" : " gantt-parent")} style={ganttBarStyle(task.startDate, task.endDate)} title={task.title + " · " + formatShortDate(task.startDate) + " — " + formatShortDate(task.endDate) + (progress && progress.total > 0 ? " · точки " + progress.done + "/" + progress.total : "")}><span>{task.title}</span><i /></button>
                       {shift?.segments.map((segment) => <i key={segment.id} className={"gantt-delta" + (segment.inside ? "" : " gantt-delta-outside") + (task.parentId ? "" : " gantt-delta-parent")} style={ganttBarStyle(segment.from, segment.to)} title={shiftTitle} />)}
                     </div>

@@ -264,19 +264,15 @@ export function taskCheckpoints(task: Task) {
   return (task.groups ?? []).flatMap((group) => group.items);
 }
 
-// null — у обычных задач, чтобы таблица не рисовала пустой счётчик.
+// Чек-листы есть и у обычных подзадач. Надзадача суммирует свои пункты и пункты детей.
+// null — у обычных задач без пунктов, чтобы таблица не рисовала пустой счётчик.
 export function checkpointProgress(task: Task, tasks: Task[]): { done: number; total: number } | null {
-  if (!task.template) return null;
-  if (task.template.subCode) {
-    const items = taskCheckpoints(task);
-    return { done: items.filter((item) => item.done).length, total: items.length };
+  const items = taskCheckpoints(task);
+  if (!task.parentId) {
+    items.push(...tasks.filter((child) => child.parentId === task.id).flatMap(taskCheckpoints));
   }
-  return tasks
-    .filter((child) => child.parentId === task.id)
-    .reduce((sum, child) => {
-      const progress = checkpointProgress(child, tasks);
-      return progress ? { done: sum.done + progress.done, total: sum.total + progress.total } : sum;
-    }, { done: 0, total: 0 });
+  if (items.length === 0 && !task.template) return null;
+  return { done: items.filter((item) => item.done).length, total: items.length };
 }
 
 // Новая точка получает следующий номер после максимального, чтобы коды не повторялись

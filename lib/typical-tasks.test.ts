@@ -34,7 +34,7 @@ describe("parseTypicalTasks: реальный справочник", () => {
     ]);
     expect(first.groups[0].result).toBe("заполненная вкладка «Интервью»");
     expect(first.groups[1].result).toBe("");
-    expect(first.groups[0].items).toHaveLength(10);
+    expect(first.groups[0].items).toHaveLength(12);
     expect(first.groups[1].items).toHaveLength(12);
     expect(second.groups[0].items).toHaveLength(5);
     expect(second.groups[1].items).toHaveLength(5);
@@ -176,6 +176,6 @@ describe("checkpointProgress и nextCheckpointCode", () => {
 
   it("считает точки шаблона", () => {
     expect(countCheckpoints(byCode("ДДС"))).toBe(16);
-    expect(countCheckpoints(byCode("ФМ"))).toBe(32);
+    expect(countCheckpoints(byCode("ФМ"))).toBe(34);
   });
 });
