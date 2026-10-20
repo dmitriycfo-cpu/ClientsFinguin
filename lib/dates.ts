@@ -69,3 +69,12 @@ export function nextMonday(value: string) {
 export function weekdayName(value: string) {
   return WEEKDAY_NAMES[parseDate(value).getDay()];
 }
+
+const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+
+// «5 окт» — для чипов и плиток, где полное «5 октября» не помещается.
+export function formatDayShortMonth(value: string) {
+  if (!isValidDateValue(value)) return "—";
+  const date = parseDate(value);
+  return date.getDate() + " " + MONTHS_SHORT[date.getMonth()];
+}

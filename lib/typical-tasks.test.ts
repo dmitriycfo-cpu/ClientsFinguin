@@ -16,7 +16,7 @@ describe("parseTypicalTasks: реальный справочник", () => {
     expect(byCode("ФМ").premise.endsWith("точка Б — на следующей неделе.")).toBe(true);
   });
 
-  it("разбирает подзадачи без групп в одну безымянную группу", () => {
+  it("разбирает спринты без групп в одну безымянную группу", () => {
     const [first, second, third] = byCode("ДДС").subtasks;
     expect(first).toMatchObject({ code: "ДДС-1", title: "Настройка сервиса и разнесение прошлого периода" });
     expect(first.groups).toHaveLength(1);
@@ -89,16 +89,16 @@ describe("parseTypicalTasks: ошибки формата", () => {
     expect(() => parseTypicalTasks(text)).toThrow(/длительност/);
   });
 
-  it("число недель не совпадает с числом подзадач", () => {
+  it("число недель не совпадает с числом спринтов", () => {
     const text = head + "- [ ] `ТЕСТ-1.1` Пункт\n\n## ТЕСТ-2. Второй спринт\n\n- [ ] `ТЕСТ-2.1` Пункт\n";
     expect(() => parseTypicalTasks(text)).toThrow(/недел/);
     // Ошибка указывает на строку заголовка задачи, а не на первую строку файла.
     expect(() => parseTypicalTasks("\n" + text)).toThrow(/строка 2/);
   });
 
-  it("у задачи нет подзадач", () => {
+  it("у задачи нет спринтов", () => {
     const text = "\n# ТЕСТ. Тестовая задача\n\n**Длительность:** 1 неделя\n";
-    expect(() => parseTypicalTasks(text)).toThrow(/нет подзадач/);
+    expect(() => parseTypicalTasks(text)).toThrow(/нет спринтов/);
     expect(() => parseTypicalTasks(text)).toThrow(/строка 2/);
   });
 
@@ -135,7 +135,7 @@ describe("expandTemplate", () => {
     expect(parent.groups).toBeUndefined();
   });
 
-  it("создаёт подзадачи с точками, скопированными без отметок", () => {
+  it("создаёт спринты с точками, скопированными без отметок", () => {
     expect(children).toHaveLength(3);
     expect(children[0]).toMatchObject({ parentId: "id-1", title: "Настройка сервиса и разнесение прошлого периода", assignee: "Иван Петров", status: "Не начато", startDate: "2026-09-21", endDate: "2026-09-27", template: { code: "ДДС", subCode: "ДДС-1", week: 1 } });
     expect(children[0].groups![0].items[4]).toMatchObject({ code: "ДДС-1.5", done: false, noteTitle: "Проверка остатков денежных средств на расчётных счетах" });

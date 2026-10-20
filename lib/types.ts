@@ -58,6 +58,18 @@ export interface RegularTask {
   records: Record<string, RegularRecord>;
 }
 
+export type ShiftReason = "client" | "fd" | "priority" | "blocker" | "other";
+
+// Перенос срока задачи. История копится в задаче, старые записи не правятся.
+export interface TaskShift {
+  date: string;      // день, когда перенесли
+  from: string;      // срок до переноса
+  to: string;        // новый срок
+  reason: ShiftReason;
+  holdCode: string;  // код контрольной точки, которая держит; пусто — не выбрана
+  note: string;
+}
+
 export interface Task {
   id: string;
   parentId: string | null;
@@ -67,12 +79,16 @@ export interface Task {
   startDate: string;
   endDate: string;
   comments: string[];
-  // Пользовательские метки обычных задач и подзадач.
+  // Пользовательские метки обычных задач и спринтов.
   labels?: string[];
   // Ссылка на шаблон заполнена только у типовых задач.
   template?: TaskTemplateRef;
-  // Чек-лист доступен у обычных и типовых подзадач.
+  // Чек-лист доступен у обычных и типовых спринтов.
   groups?: CheckpointGroup[];
+  // Переносы срока с причинами — по порядку.
+  shifts?: TaskShift[];
+  // День перевода в статус «Завершено»; у задач, завершённых до появления поля, пусто.
+  completedAt?: string;
 }
 
 export interface BaselineTask {
@@ -90,6 +106,10 @@ export interface Checkpoint {
   noteTitle: string;   // заголовок пояснения; пустой, если пояснения нет
   note: string;        // текст пояснения
   done: boolean;
+  date?: string;       // срок «ГГГГ-ММ-ДД»; без него точка не выводится на диаграмму Ганта
+  assignee?: string;   // ответственный за точку; пусто — отвечает ответственный спринта
+  doneAt?: string;     // день, когда точку отметили сделанной
+  requests?: string[]; // дни запросов клиенту, по возрастанию
 }
 
 export interface CheckpointGroup {
@@ -100,8 +120,8 @@ export interface CheckpointGroup {
 
 export interface TaskTemplateRef {
   code: string;        // код шаблона, «ДДС»
-  subCode?: string;    // код спринта, «ДДС-1» — только у подзадач
-  week?: number;       // номер спринта — только у подзадач
+  subCode?: string;    // код спринта, «ДДС-1» — только у спринтов
+  week?: number;       // номер спринта — только у спринтов
 }
 
 // Срез сроков дорожной карты: дата снимка (ISO) → id задачи → её сроки на тот момент.
@@ -148,4 +168,7 @@ export interface DashboardData {
   regularTasks: RegularTask[];
   reports: AccountingReport[];
   baselines: Baselines;
+  // Ручные отметки закрытия месяца: «ГГГГ-ММ» закрываемого месяца → день закрытия.
+  // Если отметка есть, она главнее расчёта по ежемесячным регулярным задачам.
+  monthClosings?: Record<string, string>;
 }

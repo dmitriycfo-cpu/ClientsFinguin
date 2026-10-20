@@ -77,7 +77,7 @@ export function parseTypicalTasks(markdown: string): TypicalTaskTemplate[] {
   let continuation: Continuation = null;
 
   const currentGroup = (lineNumber: number) => {
-    if (!subtask) throw new TypicalTasksFormatError(lineNumber, "пункт вне подзадачи");
+    if (!subtask) throw new TypicalTasksFormatError(lineNumber, "пункт вне спринта");
     if (!group) {
       group = { title: "", result: "", items: [] };
       subtask.groups.push(group);
@@ -130,7 +130,7 @@ export function parseTypicalTasks(markdown: string): TypicalTaskTemplate[] {
     }
     match = GROUP_HEADING.exec(line);
     if (match) {
-      if (!subtask) throw new TypicalTasksFormatError(lineNumber, "группа пунктов вне подзадачи");
+      if (!subtask) throw new TypicalTasksFormatError(lineNumber, "группа пунктов вне спринта");
       group = { title: match[1].trim(), result: "", items: [] };
       subtask.groups.push(group);
       continuation = null;
@@ -153,7 +153,7 @@ export function parseTypicalTasks(markdown: string): TypicalTaskTemplate[] {
     }
     match = META.exec(line);
     if (match) {
-      // Внутри подзадачи строки вроде «**Спринт:** неделя 1» интерфейсу не нужны.
+      // Внутри спринта строки вроде «**Спринт:** неделя 1» интерфейсу не нужны.
       if (subtask) { continuation = null; return; }
       const text = match[1].trim() + ": " + match[2].trim();
       template.premise = template.premise ? template.premise + "\n" + text : text;
@@ -186,8 +186,8 @@ export function parseTypicalTasks(markdown: string): TypicalTaskTemplate[] {
   }
   templates.forEach((item, index) => {
     const headingLine = headingLines[index];
-    if (item.subtasks.length === 0) throw new TypicalTasksFormatError(headingLine, "у задачи " + item.code + " нет подзадач");
-    if (item.weeks !== item.subtasks.length) throw new TypicalTasksFormatError(headingLine, "у задачи " + item.code + " " + item.weeks + " недель, а подзадач " + item.subtasks.length + ": подзадача занимает ровно одну неделю");
+    if (item.subtasks.length === 0) throw new TypicalTasksFormatError(headingLine, "у задачи " + item.code + " нет спринтов");
+    if (item.weeks !== item.subtasks.length) throw new TypicalTasksFormatError(headingLine, "у задачи " + item.code + " " + item.weeks + " недель, а спринтов " + item.subtasks.length + ": спринт занимает ровно одну неделю");
   });
   return templates;
 }
@@ -205,7 +205,7 @@ export function countCheckpoints(template: TypicalTaskTemplate) {
   return template.subtasks.reduce((sum, subtask) => sum + subtask.groups.reduce((inner, group) => inner + group.items.length, 0), 0);
 }
 
-// Подзадача k занимает ровно одну неделю, начиная с startDate + 7·(k−1). Праздники не учитываются.
+// Спринт k занимает ровно одну неделю, начиная с startDate + 7·(k−1). Праздники не учитываются.
 export function scheduleTemplate(template: TypicalTaskTemplate, startDate: string): SprintSchedule[] {
   return template.subtasks.map((subtask, index) => ({
     code: subtask.code,
@@ -225,7 +225,7 @@ function copyGroups(subtask: TemplateSubtask): CheckpointGroup[] {
   }));
 }
 
-// Надзадача и подзадачи-спринты. Точки копируются: дальше они принадлежат клиенту.
+// Надзадача и её спринты. Точки копируются: дальше они принадлежат клиенту.
 export function expandTemplate(
   template: TypicalTaskTemplate,
   startDate: string,
@@ -264,7 +264,7 @@ export function taskCheckpoints(task: Task) {
   return (task.groups ?? []).flatMap((group) => group.items);
 }
 
-// Чек-листы есть и у обычных подзадач. Надзадача суммирует свои пункты и пункты детей.
+// Чек-листы есть и у обычных спринтов. Надзадача суммирует свои пункты и пункты детей.
 // null — у обычных задач без пунктов, чтобы таблица не рисовала пустой счётчик.
 export function checkpointProgress(task: Task, tasks: Task[]): { done: number; total: number } | null {
   const items = taskCheckpoints(task);

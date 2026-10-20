@@ -4,6 +4,7 @@ node_modules
 .env*
 !.env.example
 work/dashboard-data.json
+work/control-data.json
 *.log
 .DS_Store
 tsconfig.tsbuildinfo

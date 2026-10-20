@@ -91,7 +91,7 @@ export default function TemplateDialog({
         </div>
         {picked.premise && <p className="field-note tpl-premise">{picked.premise}</p>}
         <div className="tpl-preview">
-          <div className="tpl-preview-head"><span>Что появится в дорожной карте</span><span>надзадача + {schedule.length} {plural(schedule.length, "подзадача", "подзадачи", "подзадач")}</span></div>
+          <div className="tpl-preview-head"><span>Что появится в дорожной карте</span><span>надзадача + {schedule.length} {plural(schedule.length, "спринт", "спринта", "спринтов")}</span></div>
           {schedule.map((sprint) => (
             <div className="tpl-preview-row" key={sprint.code}>
               <span className="tpl-week">Неделя {sprint.week}</span>

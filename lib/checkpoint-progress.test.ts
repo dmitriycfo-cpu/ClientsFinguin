@@ -15,11 +15,11 @@ const child: Task = {
 };
 
 describe("чек-листы задач без шаблона", () => {
-  it("показывает прогресс обычной подзадачи", () => {
+  it("показывает прогресс обычного спринта", () => {
     expect(checkpointProgress(child, [parent, child])).toEqual({ done: 1, total: 2 });
   });
 
-  it("суммирует обычные и типовые подзадачи, исключая чужие", () => {
+  it("суммирует обычные и типовые спринты, исключая чужие", () => {
     const sprint: Task = { ...child, id: "sprint", template: { code: "ДДС", subCode: "ДДС-1" } };
     const unrelated: Task = { ...child, id: "unrelated", parentId: "other" };
     const tasks = [parent, child, sprint, unrelated];
@@ -32,7 +32,7 @@ describe("чек-листы задач без шаблона", () => {
     expect(checkpointProgress({ ...child, groups: [] }, [])).toBeNull();
   });
 
-  it("сохраняет прогресс при превращении подзадачи в надзадачу", () => {
+  it("сохраняет прогресс при превращении спринта в надзадачу", () => {
     expect(checkpointProgress({ ...child, parentId: null }, [])).toEqual({ done: 1, total: 2 });
   });
 
