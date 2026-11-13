@@ -65,6 +65,22 @@ describe("weekReport — прошлые недели", () => {
   });
 });
 
+describe("weekReport — архив", () => {
+  // Надзадачу убрали в архив: прошлое остаётся в отчёте, просрочки и планы — нет.
+  const archived = [{ ...parent, archivedAt: TODAY }, s0, s1, s2, s3];
+
+  it("сделанное и переносы остаются", () => {
+    const report = weekReport(archived, "2026-10-05", TODAY);
+    expect(report.done.map((group) => group.task.id)).toEqual(["s1"]);
+    expect(report.shifts.map((entry) => entry.task.id)).toEqual(["s1"]);
+  });
+  it("просрочки и план следующей недели — без архивных", () => {
+    const report = weekReport(archived, "2026-10-05", TODAY);
+    expect(report.stuck).toEqual([]);
+    expect(report.next).toEqual([]);
+  });
+});
+
 describe("подписи и границы", () => {
   it("границы листания — от недели первой задачи до текущей", () => {
     expect(weekBounds(tasks, TODAY)).toEqual({ first: "2026-09-07", last: "2026-10-05" });

@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  Archive,
+  ArchiveRestore,
   CalendarDays,
   ChartGantt,
   Check,
@@ -24,18 +26,22 @@ import {
 import Image from "next/image";
 import ControlBoard from "@/components/control-board";
 import AccountingPolicy from "@/components/accounting-policy";
+import ArchiveView from "@/components/archive-view";
 import CheckpointsEditor, { formatCheckpointDate, ProgressRing } from "@/components/checkpoints-editor";
 import ModalShell from "@/components/modal-shell";
 import PersonSelect, { normalizePerson } from "@/components/person-select";
 import type { PersonPickerProps } from "@/components/person-select";
 import { ShiftHistory, ShiftReasonFields } from "@/components/shift-reason";
 import TemplateDialog from "@/components/template-dialog";
+import { useDragSort } from "@/components/use-drag-sort";
 import WeekReportView from "@/components/week-report";
+import { activeTasks, archiveCount, archiveTask, isArchived, removeTask, restoreTask } from "@/lib/archive";
 import { addDays, differenceInDays, formatDayMonth, formatDayShortMonth, parseDate, startOfWeek, toISO } from "@/lib/dates";
 import { formatWeekRange, weekAgeLabel, weekBounds } from "@/lib/week-report";
 import { closingMonthKey, isWorkTask, monthClosing, parentSummary, sprintHealth } from "@/lib/roadmap-pulse";
 import MonthClosingPopover from "@/components/month-closing-popover";
 import { plural } from "@/lib/plural";
+import { canDropTask, moveTask } from "@/lib/reorder";
 import { appendShift, needsShiftReason, originalEndDate, shiftReasonInfo, validateShift } from "@/lib/task-shifts";
 import {
   frequencyTitle,
@@ -445,6 +451,8 @@ function TaskDialog({
   onClose,
   onSave,
   onDelete,
+  onArchive,
+  onRestore,
   onOpenTask,
 }: {
   item: Task | null;
@@ -457,9 +465,14 @@ function TaskDialog({
   onClose: () => void;
   onSave: (task: Task) => void;
   onDelete: (id: string) => void;
+  onArchive: (id: string) => void;
+  onRestore: (id: string) => void;
   onOpenTask: (task: Task) => void;
 }) {
-  const parents = tasks.filter((task) => !task.parentId && task.id !== item?.id);
+  const parents = tasks.filter((task) => !task.parentId && task.id !== item?.id && !task.archivedAt);
+  const archived = item ? isArchived(item, tasks) : false;
+  // Спринт архивной надзадачи возвращается только вместе с ней.
+  const archivedWithParent = Boolean(item && archived && !item.archivedAt);
   const hasChildren = item ? tasks.some((task) => task.parentId === item.id) : false;
   const [taskType, setTaskType] = useState<"parent" | "subtask">(() => {
     if (item) return item.parentId ? "subtask" : "parent";
@@ -484,7 +497,7 @@ function TaskDialog({
   const [labelsText, setLabelsText] = useState(() => (item?.labels ?? []).join(", "));
   const isTemplateParent = Boolean(item?.template) && !isTemplateSprint;
   const hasChecklist = taskType === "subtask" || (draft.groups?.length ?? 0) > 0;
-  const sprints = isTemplateParent && item ? templateSprints(tasks, item.id) : [];
+  const sprints = isTemplateParent && item ? templateSprints(tasks, item.id).filter((sprint) => archived || !sprint.archivedAt) : [];
   const checklistItems = (draft.groups ?? []).flatMap((group) => group.items);
   const checklistAllDone = checklistItems.length > 0 && checklistItems.every((checkpoint) => checkpoint.done);
   const parentProgress = isTemplateParent && item ? checkpointProgress(item, tasks) ?? { done: 0, total: 0 } : { done: 0, total: 0 };
@@ -566,7 +579,16 @@ function TaskDialog({
           {error && <p className="form-error">{error}</p>}
         </div>
         <footer className="modal-actions">
-          {item ? <button type="button" className="delete-button" onClick={() => onDelete(item.id)}><Trash2 size={16} />Удалить</button> : <span />}
+          {item ? (
+            <div>
+              {archivedWithParent
+                ? <span className="archive-note">В архиве вместе с надзадачей</span>
+                : archived
+                  ? <button type="button" className="secondary" onClick={() => onRestore(item.id)}><ArchiveRestore size={16} />Вернуть из архива</button>
+                  : <button type="button" className="secondary" onClick={() => onArchive(item.id)}><Archive size={16} />В архив</button>}
+              <button type="button" className="delete-button" onClick={() => onDelete(item.id)}><Trash2 size={16} />Удалить</button>
+            </div>
+          ) : <span />}
           <div><button type="button" className="secondary" onClick={onClose}>Отмена</button><button type="submit" className="primary">{askReason ? "Перенести срок" : "Сохранить"}</button></div>
         </footer>
       </form>
@@ -945,7 +967,7 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
   // Выбор охвата для встречи из серии: удалить/поправить одну, хвост или всю серию.
   // Карточка встречи на это время закрывается, а её черновик ждёт здесь.
   const [seriesPrompt, setSeriesPrompt] = useState<{ mode: "delete" | "edit"; meeting: Meeting; draft: Meeting | null } | null>(null);
-  const [ganttFilter, setGanttFilter] = useState<"Все" | "В работе" | "Просрочено" | "Неделя">("Все");
+  const [ganttFilter, setGanttFilter] = useState<"Все" | "В работе" | "Просрочено" | "Неделя" | "Архив">("Все");
   // Пока неделю не листали, показываем текущую — она сама сдвигается со сменой суток.
   const [pickedWeek, setPickedWeek] = useState<string | null>(null);
   const [baselineDate, setBaselineDate] = useState("");
@@ -1064,7 +1086,10 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
     toastTimer.current = setTimeout(() => setToast(""), 2500);
   }
 
-  const ordered = useMemo(() => orderedTasks(data.tasks), [data.tasks]);
+  // Всё, кроме отчёта недели и самого архива, видит только задачи вне архива.
+  const liveTasks = useMemo(() => activeTasks(data.tasks), [data.tasks]);
+  const archivedCount = useMemo(() => archiveCount(data.tasks), [data.tasks]);
+  const ordered = useMemo(() => orderedTasks(liveTasks), [liveTasks]);
   const filteredTasks = useMemo(() => {
     const matches = (task: Task) => {
       if (ganttFilter === "В работе") return task.status === "В работе" || task.status === "На проверке";
@@ -1075,7 +1100,7 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
   }, [ordered, ganttFilter, today]);
   // Под фильтрами спринты показываются и у свёрнутых надзадач — иначе фильтр «Просрочено» был бы пустым.
   const visibleTasks = useMemo(() => filteredTasks.filter((task) => !task.parentId || ganttFilter !== "Все" || !collapsedTaskIds.has(task.parentId)), [filteredTasks, collapsedTaskIds, ganttFilter]);
-  const parentIds = useMemo(() => data.tasks.filter((task) => !task.parentId && data.tasks.some((child) => child.parentId === task.id)).map((task) => task.id), [data.tasks]);
+  const parentIds = useMemo(() => liveTasks.filter((task) => !task.parentId && liveTasks.some((child) => child.parentId === task.id)).map((task) => task.id), [liveTasks]);
   const anyCollapsed = parentIds.some((id) => collapsedTaskIds.has(id));
 
   // Таблица и шкала прокручиваются отдельно. Измеряем строки после переноса текста,
@@ -1128,21 +1153,21 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
     return { base, days, segments };
   }, [baseline]);
 
-  const shiftedCount = useMemo(() => (baseline ? data.tasks.filter((task) => baselineShiftOf(task)).length : 0), [baseline, data.tasks, baselineShiftOf]);
+  const shiftedCount = useMemo(() => (baseline ? liveTasks.filter((task) => baselineShiftOf(task)).length : 0), [baseline, liveTasks, baselineShiftOf]);
 
   const nextMeeting = [...data.meetings].filter((meeting) => meeting.status === "planned" && parseDate(meeting.plannedDate) >= today).sort((a, b) => (a.plannedDate + a.plannedTime).localeCompare(b.plannedDate + b.plannedTime))[0];
 
   const planningCoverage = useMemo(() => {
-    const workTasks = data.tasks.filter((task) => task.parentId || !data.tasks.some((child) => child.parentId === task.id));
+    const workTasks = liveTasks.filter((task) => task.parentId || !liveTasks.some((child) => child.parentId === task.id));
     return [0, 1].map((monthOffset) => {
       const monthStart = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1, 12);
       const count = workTasks.filter((task) => taskOverlapsMonth(task, monthStart)).length;
       return { monthStart, count, hasPlan: count > 0 };
     });
-  }, [data.tasks, today]);
+  }, [liveTasks, today]);
   const missingPlanMonths = planningCoverage.filter((month) => !month.hasPlan);
   const hasTwoMonthPlan = missingPlanMonths.length === 0;
-  const health = useMemo(() => sprintHealth(data.tasks, todayKey), [data.tasks, todayKey]);
+  const health = useMemo(() => sprintHealth(liveTasks, todayKey), [liveTasks, todayKey]);
   const closing = useMemo(() => monthClosing(data.regularTasks, todayKey), [data.regularTasks, todayKey]);
   // «Выполнено 2 из 3 · просрочено: Закрыть ОПиУ (срок 5 окт) — нет зарплатной ведомости»
   const closingNote = closing.state === "none"
@@ -1164,8 +1189,8 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
   const ganttRange = useMemo(() => {
     const baselineDatesInPlay = baseline ? Object.values(baseline).flatMap((base) => [parseDate(base.startDate), parseDate(base.endDate)]) : [];
     // Срок точки может выходить за неделю спринта — шкала растягивается и под него.
-    const checkpointDates = data.tasks.filter((task) => task.parentId).flatMap((task) => taskCheckpoints(task).map(checkpointDate).filter(Boolean).map(parseDate));
-    const dates = [today, ...data.tasks.flatMap((task) => [parseDate(task.startDate), parseDate(task.endDate)]), ...checkpointDates, ...baselineDatesInPlay].filter((date) => !Number.isNaN(date.getTime()));
+    const checkpointDates = liveTasks.filter((task) => task.parentId).flatMap((task) => taskCheckpoints(task).map(checkpointDate).filter(Boolean).map(parseDate));
+    const dates = [today, ...liveTasks.flatMap((task) => [parseDate(task.startDate), parseDate(task.endDate)]), ...checkpointDates, ...baselineDatesInPlay].filter((date) => !Number.isNaN(date.getTime()));
     const minDate = dates.length ? new Date(Math.min(...dates.map((date) => date.getTime()))) : today;
     const maxDate = dates.length ? new Date(Math.max(...dates.map((date) => date.getTime()))) : new Date(2026, 8, 30, 12);
     const start = new Date(minDate.getFullYear(), minDate.getMonth(), 1, 12);
@@ -1183,7 +1208,7 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
       cursor.setMonth(cursor.getMonth() + 1);
     }
     return { start, end, totalDays, months };
-  }, [data.tasks, baseline, today]);
+  }, [liveTasks, baseline, today]);
 
   const ideaRows = useMemo(() => {
     const search = ideaSearch.trim().toLowerCase();
@@ -1213,13 +1238,13 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
 
   // Задачи всех источников на видимые шесть недель, разложенные по дням.
   const calendarTasksByDate = useMemo(() => {
-    const items = collectCalendarTasks({ tasks: data.tasks, regularTasks: data.regularTasks }, toISO(calendarDays[0]), toISO(calendarDays[calendarDays.length - 1]), todayKey)
+    const items = collectCalendarTasks({ tasks: liveTasks, regularTasks: data.regularTasks }, toISO(calendarDays[0]), toISO(calendarDays[calendarDays.length - 1]), todayKey)
       .filter(isCalendarTaskVisible)
       .sort((a, b) => CALENDAR_SOURCE_ORDER[a.source] - CALENDAR_SOURCE_ORDER[b.source]);
     const byDate = new Map<string, CalendarTask[]>();
     for (const item of items) byDate.set(item.date, [...(byDate.get(item.date) ?? []), item]);
     return byDate;
-  }, [data.tasks, data.regularTasks, calendarDays, todayKey, isCalendarTaskVisible]);
+  }, [liveTasks, data.regularTasks, calendarDays, todayKey, isCalendarTaskVisible]);
 
   // Встречи дня: по плановой дате, а проведённые — ещё и по фактической. Отменённые остаются
   // в списке, но ячейку не закрашивают. У встреч нет ответственного, поэтому при выборе
@@ -1259,7 +1284,7 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
   const calendarAgenda = useMemo(() => {
     if (selectedDate) {
       const overdueTail = selectedDate === todayKey
-        ? collectCalendarTasks({ tasks: data.tasks, regularTasks: data.regularTasks }, addDays(todayKey, -OVERDUE_TAIL_DAYS), addDays(todayKey, -1), todayKey)
+        ? collectCalendarTasks({ tasks: liveTasks, regularTasks: data.regularTasks }, addDays(todayKey, -OVERDUE_TAIL_DAYS), addDays(todayKey, -1), todayKey)
           .filter((item) => item.status === "Просрочено" && isCalendarTaskVisible(item))
           .sort((a, b) => a.date.localeCompare(b.date))
         : [];
@@ -1270,7 +1295,7 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
       .map((iso) => ({ iso, meetings: meetingsOnDay(iso), tasks: calendarTasksByDate.get(iso) ?? [] }))
       .filter((day) => day.meetings.length > 0 || day.tasks.length > 0);
     return { days, overdueTail: [] as CalendarTask[] };
-  }, [selectedDate, todayKey, data.tasks, data.regularTasks, isCalendarTaskVisible, meetingsOnDay, calendarTasksByDate, calendarMonth]);
+  }, [selectedDate, todayKey, liveTasks, data.regularTasks, isCalendarTaskVisible, meetingsOnDay, calendarTasksByDate, calendarMonth]);
 
   const calendarPeople = useMemo(() => mergePeople(data.people, [
     ...data.tasks.flatMap((task) => [task.assignee, ...taskCheckpoints(task).map((item) => item.assignee ?? "")]),
@@ -1333,9 +1358,31 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
   }
 
   function deleteTask(id: string) {
-    if (!window.confirm("Удалить задачу и её спринты?")) return;
-    commit((current) => ({ ...current, tasks: current.tasks.filter((task) => task.id !== id && task.parentId !== id) }));
+    const hasSprints = data.tasks.some((task) => task.parentId === id);
+    if (!window.confirm(hasSprints
+      ? "Удалить надзадачу вместе со всеми спринтами, в том числе архивными? Отменить это нельзя."
+      : "Удалить задачу? Отменить это нельзя.")) return;
+    commit((current) => ({ ...current, tasks: removeTask(current.tasks, id) }));
     setModal(null);
+  }
+
+  function archiveTaskById(id: string) {
+    const task = data.tasks.find((item) => item.id === id);
+    commit((current) => ({ ...current, tasks: archiveTask(current.tasks, id, todayKey) }));
+    setModal(null);
+    if (task) showToast("В архиве: " + task.title + ". Вернуть можно во вкладке «Архив»");
+  }
+
+  const taskSort = useDragSort(
+    (dragId, targetId) => canDropTask(data.tasks, dragId, targetId),
+    (dragId, targetId, place) => commit((current) => ({ ...current, tasks: moveTask(current.tasks, dragId, targetId, place) })),
+  );
+
+  function restoreTaskById(id: string) {
+    const task = data.tasks.find((item) => item.id === id);
+    commit((current) => ({ ...current, tasks: restoreTask(current.tasks, id) }));
+    setModal(null);
+    if (task) showToast("Возвращено на дорожную карту: " + task.title);
   }
 
   function addTemplateTasks(newTasks: Task[]) {
@@ -1790,9 +1837,9 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
 
       <section className="card roadmap-card" ref={roadmapRef}>
         <div className="section-head">
-          <div className="section-title-wrap"><h2>Дорожная карта</h2><nav>{(["Все", "В работе", "Просрочено", "Неделя"] as const).map((filter) => <button key={filter} className={ganttFilter === filter ? "active" : ""} onClick={() => setGanttFilter(filter)}>{filter}</button>)}</nav></div>
+          <div className="section-title-wrap"><h2>Дорожная карта</h2><nav>{(["Все", "В работе", "Просрочено", "Неделя", "Архив"] as const).map((filter) => <button key={filter} className={ganttFilter === filter ? "active" : ""} onClick={() => setGanttFilter(filter)}>{filter}{filter === "Архив" && archivedCount > 0 && <span className="nav-count">{archivedCount}</span>}</button>)}</nav></div>
           <div className="roadmap-actions">
-            {ganttFilter === "Неделя" ? (
+            {ganttFilter === "Архив" ? null : ganttFilter === "Неделя" ? (
               <div className="wk-switch">
                 <button type="button" className="icon-button" aria-label="Предыдущая неделя" disabled={weekStart <= weekRange.first} onClick={() => setPickedWeek(addDays(weekStart, -7))}><ChevronLeft size={16} /></button>
                 <strong>{formatWeekRange(weekStart)}<small>{weekAgeLabel(weekStart, todayKey)}</small></strong>
@@ -1842,24 +1889,27 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
             </>)}
           </div>
         </div>
-        {ganttFilter === "Неделя"
+        {ganttFilter === "Архив"
+          ? <ArchiveView tasks={data.tasks} onOpenTask={(task) => setModal({ kind: "task", item: task })} onRestore={restoreTaskById} onDelete={deleteTask} />
+          : ganttFilter === "Неделя"
           ? <WeekReportView tasks={data.tasks} today={todayKey} weekStart={weekStart} onOpenTask={(task) => setModal({ kind: "task", item: task })} />
           : <div className="gantt-grid">
           <div className="task-table" ref={taskTableRef}>
             <div className="task-table-head"><span>Задача</span><span>Ответственный</span><span>Статус</span><span>Срок</span></div>
             {visibleTasks.map((task) => {
-              const childCount = data.tasks.filter((child) => child.parentId === task.id).length;
+              const childCount = liveTasks.filter((child) => child.parentId === task.id).length;
               const isCollapsed = collapsedTaskIds.has(task.id);
-              const progress = checkpointProgress(task, data.tasks);
-              const summary = !task.parentId && childCount > 0 ? parentSummary(task, data.tasks, todayKey) : null;
-              const shifts = isWorkTask(task, data.tasks) ? task.shifts ?? [] : [];
+              const progress = checkpointProgress(task, liveTasks);
+              const summary = !task.parentId && childCount > 0 ? parentSummary(task, liveTasks, todayKey) : null;
+              const shifts = isWorkTask(task, liveTasks) ? task.shifts ?? [] : [];
               const lastShift = shifts[shifts.length - 1];
-              const waiting = isWorkTask(task, data.tasks) && taskCheckpoints(task).some(isWaitingClient);
-              const overdueNow = isWorkTask(task, data.tasks) && task.status !== "Завершено" && task.endDate < todayKey;
+              const waiting = isWorkTask(task, liveTasks) && taskCheckpoints(task).some(isWaitingClient);
+              const overdueNow = isWorkTask(task, liveTasks) && task.status !== "Завершено" && task.endDate < todayKey;
               return (
-                <div className={"task-table-row " + (task.parentId ? "task-child" : "task-parent") + (freshTaskIds.has(task.id) ? " fresh" : "")} key={task.id} data-task-id={task.id} role="button" tabIndex={0} onClick={() => setModal({ kind: "task", item: task })} onKeyDown={(event) => {
+                <div className={"task-table-row " + (task.parentId ? "task-child" : "task-parent") + (freshTaskIds.has(task.id) ? " fresh" : "") + taskSort.rowClass(task.id)} key={task.id} data-task-id={task.id} {...taskSort.rowProps(task.id)} role="button" tabIndex={0} onClick={() => setModal({ kind: "task", item: task })} onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") setModal({ kind: "task", item: task });
                 }}>
+                  {taskSort.handle(task.id)}
                   <span className="task-title-cell">
                     {!task.parentId && childCount > 0 && <button type="button" className="task-toggle" aria-label={isCollapsed ? "Развернуть спринты" : "Свернуть спринты"} aria-expanded={!isCollapsed} onClick={(event) => { event.stopPropagation(); toggleParent(task.id); }}>{isCollapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}</button>}
                     {!task.parentId && childCount === 0 && <span className="toggle-spacer" />}
@@ -1908,7 +1958,7 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
                     ? "Базовый план на " + formatShortDate(baselineKey) + ": " + formatShortDate(shift.base.startDate) + " — " + formatShortDate(shift.base.endDate)
                       + (shift.days === 0 ? "" : ", дедлайн " + (shift.days > 0 ? "+" : "−") + Math.abs(shift.days) + " " + pluralDays(Math.abs(shift.days)))
                     : undefined;
-                  const progress = checkpointProgress(task, data.tasks);
+                  const progress = checkpointProgress(task, liveTasks);
                   // Ромбики точек ставятся только на спринтах. Ромбик дедлайна на конце полосы
                   // тогда убирается: при масштабе ~10 px на день он наезжает на точку пятницы.
                   const marks = task.parentId ? checkpointMarks(task, todayKey) : [];
@@ -2071,8 +2121,8 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
         ? <AccountingPolicy reports={data.reports} people={data.people} onChange={(reports) => commit((current) => ({ ...current, reports }))} />
         : <ControlBoard today={todayKey} />}
 
-      {modal?.kind === "task" && <TaskDialog key={modal.item?.id ?? "new"} item={modal.item} tasks={data.tasks} people={data.people} today={todayKey} focusDate={modal.focusDate} onAddPerson={addPerson} onDeletePerson={deletePerson} onClose={() => setModal(null)} onSave={saveTask} onDelete={deleteTask} onOpenTask={(task) => setModal({ kind: "task", item: task })} />}
-      {modal?.kind === "template" && <TemplateDialog templates={templates} tasks={data.tasks} people={data.people} today={todayKey} onAddPerson={addPerson} onDeletePerson={deletePerson} onClose={() => setModal(null)} onAdd={addTemplateTasks} />}
+      {modal?.kind === "task" && <TaskDialog key={modal.item?.id ?? "new"} item={modal.item} tasks={data.tasks} people={data.people} today={todayKey} focusDate={modal.focusDate} onAddPerson={addPerson} onDeletePerson={deletePerson} onClose={() => setModal(null)} onSave={saveTask} onDelete={deleteTask} onArchive={archiveTaskById} onRestore={restoreTaskById} onOpenTask={(task) => setModal({ kind: "task", item: task })} />}
+      {modal?.kind === "template" && <TemplateDialog templates={templates} tasks={liveTasks} people={data.people} today={todayKey} onAddPerson={addPerson} onDeletePerson={deletePerson} onClose={() => setModal(null)} onAdd={addTemplateTasks} />}
       {modal?.kind === "idea" && <IdeaDialog item={modal.item} people={data.people} onAddPerson={addPerson} onDeletePerson={deletePerson} onClose={() => setModal(null)} onSave={saveIdea} onDelete={deleteIdea} />}
       {modal?.kind === "meeting" && <MeetingDialog item={modal.item} defaultDate={calendarDefaultDate} people={data.people} seriesCount={modal.item ? getSeriesOccurrences(data.meetings, modal.item).length : 1} onAddPerson={addPerson} onDeletePerson={deletePerson} onClose={() => setModal(null)} onSave={saveMeeting} onDelete={deleteMeeting} />}
       {seriesPrompt && (

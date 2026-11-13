@@ -89,6 +89,8 @@ export interface Task {
   shifts?: TaskShift[];
   // День перевода в статус «Завершено»; у задач, завершённых до появления поля, пусто.
   completedAt?: string;
+  // День отправки в архив. Спринты архивной надзадачи прячутся вместе с ней, своё поле им не ставится.
+  archivedAt?: string;
 }
 
 export interface BaselineTask {

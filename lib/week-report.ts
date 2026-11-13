@@ -1,3 +1,4 @@
+import { isArchived } from "./archive";
 import { addDays, differenceInDays, parseDate, startOfWeek } from "./dates";
 import { plural } from "./plural";
 import { isTaskCompleted, isWorkTask } from "./roadmap-pulse";
@@ -23,6 +24,7 @@ const MONTHS_GENITIVE = ["января", "февраля", "марта", "апр
 
 // Отчёт за неделю с понедельника weekStart. Для текущей недели состояние берётся на сегодня,
 // для прошлых — на воскресенье той недели, со сроками, восстановленными по истории переносов.
+// Архивные задачи остаются в сделанном и переносах, но не в просрочках и планах.
 export function weekReport(tasks: Task[], weekStart: string, today: string): WeekReport {
   const weekEnd = addDays(weekStart, 6);
   const asOf = weekEnd < today ? weekEnd : today;
@@ -30,6 +32,7 @@ export function weekReport(tasks: Task[], weekStart: string, today: string): Wee
   const nextEnd = addDays(weekStart, 13);
   const inWeek = (date?: string) => Boolean(date) && date! >= weekStart && date! <= weekEnd;
   const work = tasks.filter((task) => isWorkTask(task, tasks));
+  const live = work.filter((task) => !isArchived(task, tasks));
 
   const done = work
     .map((task) => ({
@@ -44,14 +47,14 @@ export function weekReport(tasks: Task[], weekStart: string, today: string): Wee
     .filter((entry) => inWeek(entry.shift.date))
     .sort((a, b) => a.shift.date.localeCompare(b.shift.date));
 
-  const stuck = work
+  const stuck = live
     .filter((task) => !isTaskCompleted(task, asOf) && task.startDate <= asOf && endDateAt(task, asOf) < asOf)
     .map((task) => {
       const endDate = endDateAt(task, asOf);
       return { task, endDate, daysLate: differenceInDays(endDate, asOf), openItems: taskCheckpoints(task).filter((item) => !item.done) };
     });
 
-  const next = work
+  const next = live
     .filter((task) => !isTaskCompleted(task) && task.startDate <= nextEnd && task.endDate >= nextStart)
     .sort((a, b) => a.startDate.localeCompare(b.startDate))
     .map((task) => {

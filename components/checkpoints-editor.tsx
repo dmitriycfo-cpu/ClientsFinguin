@@ -4,10 +4,12 @@ import { CalendarDays, Pencil, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { normalizePerson } from "@/components/person-select";
+import { useDragSort } from "@/components/use-drag-sort";
 import { checkpointDate, checkpointState } from "@/lib/checkpoint-dates";
 import { addClientRequest, changeClientRequest, isWaitingClient, removeClientRequest, requestDateError, setCheckpointDone } from "@/lib/checkpoint-tracking";
 import { addDays, differenceInDays, formatDayMonth, formatDayShortMonth, isValidDateValue, parseDate, weekdayName } from "@/lib/dates";
 import { plural } from "@/lib/plural";
+import { moveCheckpoint } from "@/lib/reorder";
 import type { Checkpoint, CheckpointGroup } from "@/lib/types";
 
 // Кольцевой индикатор «сделано из всего» — используется в таблице задач и в сводке спринтов.
@@ -274,6 +276,13 @@ export default function CheckpointsEditor({
     })));
   }
 
+  // Точки двигаются только внутри своей группы.
+  const groupOf = (code: string) => groups.findIndex((group) => group.items.some((item) => item.code === code));
+  const pointSort = useDragSort(
+    (dragCode, targetCode) => dragCode !== targetCode && groupOf(dragCode) === groupOf(targetCode),
+    (dragCode, targetCode, place) => onChange(moveCheckpoint(groups, dragCode, targetCode, place)),
+  );
+
   function toggleNote(code: string) {
     setOpenNotes((current) => {
       const next = new Set(current);
@@ -343,7 +352,8 @@ export default function CheckpointsEditor({
               </div>
             </div>
           ) : (
-            <div className={"check-item" + (item.done ? " check-item-done" : "") + (flashDate && checkpointDate(item) === flashDate ? " cp-flash" : "")} key={item.code}>
+            <div className={"check-item" + (item.done ? " check-item-done" : "") + (flashDate && checkpointDate(item) === flashDate ? " cp-flash" : "") + pointSort.rowClass(item.code)} key={item.code} {...pointSort.rowProps(item.code)}>
+              {pointSort.handle(item.code)}
               <input type="checkbox" id={"checkpoint-" + item.code} checked={item.done} onChange={() => patchItem(item.code, setCheckpointDone(item, !item.done, today))} />
               <span className="check-code">{shortCode(item.code)}</span>
               <label htmlFor={"checkpoint-" + item.code} className={item.gate ? "check-gate" : ""}>{item.title}{item.aside && <span className="check-aside"> ({item.aside})</span>}</label>
