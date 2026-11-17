@@ -1643,3 +1643,31 @@ button.arc-title:hover b { text-decoration: underline; }
   .wk-reg-row { grid-template-columns: 16px minmax(0, 1fr); }
   .wk-reg-row time, .wk-reg-row > .flag { grid-column: 2; justify-self: start; }
 }
+
+/* Шапка дорожной карты: заголовок и кнопки в первой строке, вкладки — во второй,
+   чтобы при семи вкладках ничего не переносилось по словам */
+.roadmap-card > .section-head {
+  min-height: 0;
+  padding: 12px 18px 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "title actions" "nav nav";
+  align-items: center;
+  gap: 10px 18px;
+}
+.roadmap-card > .section-head .section-title-wrap { display: contents; }
+.roadmap-card > .section-head h2 { grid-area: title; white-space: nowrap; }
+.roadmap-card > .section-head .roadmap-actions { grid-area: actions; flex-wrap: wrap; justify-content: flex-end; }
+.roadmap-card > .section-head .roadmap-actions button { white-space: nowrap; }
+.roadmap-card > .section-head nav { grid-area: nav; height: 40px; gap: 24px; overflow-x: auto; scrollbar-width: none; }
+.roadmap-card > .section-head nav button { padding: 0 2px; display: inline-flex; align-items: center; white-space: nowrap; }
+.roadmap-card > .section-head nav button:hover { color: var(--navy); }
+.roadmap-card > .section-head nav button.active::after { bottom: 0; }
+@media (max-width: 580px) {
+  .roadmap-card > .section-head { padding: 10px 12px 0; grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "actions" "nav"; }
+  .roadmap-card > .section-head .roadmap-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .roadmap-card > .section-head .roadmap-actions > *, .roadmap-card > .section-head .roadmap-actions .baseline-control .secondary { width: 100%; }
+  .roadmap-card > .section-head .roadmap-actions > .primary { grid-column: 1 / -1; }
+  .roadmap-card > .section-head .roadmap-actions > .wk-switch { grid-column: 1 / -1; }
+  .roadmap-card > .section-head nav { gap: 16px; }
+}
