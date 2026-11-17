@@ -1,5 +1,6 @@
 import { isWaitingClient } from "./checkpoint-tracking";
 import { isValidDateValue, parseDate, toISO } from "./dates";
+import { isPostponed } from "./postpone";
 import { getPlannedDates, occurrenceStatus } from "./regular-schedule";
 import { taskCheckpoints } from "./typical-tasks";
 import type { RegularTask, Task } from "./types";
@@ -17,11 +18,11 @@ export function isTaskCompleted(task: Task, at?: string) {
 }
 
 export function isTaskLate(task: Task, today: string) {
-  return !isTaskCompleted(task) && (task.status === "Просрочено" || task.endDate < today);
+  return !isTaskCompleted(task) && task.status !== "Отложено" && (task.status === "Просрочено" || task.endDate < today);
 }
 
 export function sprintHealth(tasks: Task[], today: string) {
-  const current = tasks.filter((task) => isWorkTask(task, tasks) && !isTaskCompleted(task) && task.startDate <= today);
+  const current = tasks.filter((task) => isWorkTask(task, tasks) && !isTaskCompleted(task) && !isPostponed(task, tasks) && task.startDate <= today);
   const overdue = current.filter((task) => isTaskLate(task, today));
   const shifted = current.filter((task) => !isTaskLate(task, today) && (task.shifts?.length ?? 0) > 0);
   return { current: current.length, overdue: overdue.length, shifted: shifted.length };
@@ -29,7 +30,7 @@ export function sprintHealth(tasks: Task[], today: string) {
 
 export function parentSummary(parent: Task, tasks: Task[], today: string) {
   const sprints = tasks.filter((task) => task.parentId === parent.id);
-  const open = sprints.filter((task) => !isTaskCompleted(task));
+  const open = sprints.filter((task) => !isTaskCompleted(task) && !isPostponed(task, tasks));
   return {
     total: sprints.length,
     closed: sprints.length - open.length,

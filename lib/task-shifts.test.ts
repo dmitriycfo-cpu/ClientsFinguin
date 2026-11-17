@@ -21,8 +21,11 @@ describe("needsShiftReason", () => {
     expect(needsShiftReason(sprint, { ...sprint }, tasks)).toBe(false);
     expect(needsShiftReason(null, { ...sprint, endDate: "2026-12-01" }, tasks)).toBe(false);
   });
-  it("не просит у надзадачи со спринтами", () => {
-    expect(needsShiftReason(parent, { ...parent, endDate: "2026-11-01" }, tasks)).toBe(false);
+  it("просит и у надзадачи со спринтами — молча сдвинуть её нельзя", () => {
+    expect(needsShiftReason(parent, { ...parent, endDate: "2026-11-01" }, tasks)).toBe(true);
+  });
+  it("не просит при откладывании — там своя причина и дата", () => {
+    expect(needsShiftReason(parent, { ...parent, status: "Отложено", endDate: "2026-11-01" }, tasks)).toBe(false);
   });
   it("просит у надзадачи без спринтов", () => {
     const single = { ...parent, id: "single" };

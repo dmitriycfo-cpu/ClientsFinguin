@@ -2,6 +2,7 @@ import { isArchived } from "./archive";
 import { addDays, differenceInDays, parseDate, startOfWeek } from "./dates";
 import { plural } from "./plural";
 import { isTaskCompleted, isWorkTask } from "./roadmap-pulse";
+import { isPostponed } from "./postpone";
 import { endDateAt } from "./task-shifts";
 import { taskCheckpoints } from "./typical-tasks";
 import type { Checkpoint, Task, TaskShift } from "./types";
@@ -17,6 +18,7 @@ export interface WeekReport {
   shifts: Array<{ task: Task; shift: TaskShift; index: number; total: number }>;
   stuck: Array<{ task: Task; endDate: string; daysLate: number; openItems: Checkpoint[] }>;
   next: Array<{ task: Task; items: Checkpoint[] }>;
+  postponed: Array<{ task: Task; isNew: boolean }>;
   noMovement: boolean;
 }
 
@@ -32,7 +34,8 @@ export function weekReport(tasks: Task[], weekStart: string, today: string): Wee
   const nextEnd = addDays(weekStart, 13);
   const inWeek = (date?: string) => Boolean(date) && date! >= weekStart && date! <= weekEnd;
   const work = tasks.filter((task) => isWorkTask(task, tasks));
-  const live = work.filter((task) => !isArchived(task, tasks));
+  const notArchived = work.filter((task) => !isArchived(task, tasks));
+  const live = notArchived.filter((task) => !isPostponed(task, tasks));
 
   const done = work
     .map((task) => ({
@@ -63,13 +66,19 @@ export function weekReport(tasks: Task[], weekStart: string, today: string): Wee
       return { task, items: [...dated, ...open.filter((item) => !dated.includes(item))] };
     });
 
+  // Отложенные — сами задачи со статусом «Отложено» (спринты отложенной надзадачи не дублируем).
+  const postponed = tasks
+    .filter((task) => task.status === "Отложено" && !isArchived(task, tasks))
+    .map((task) => ({ task, isNew: inWeek(task.postponedAt) }))
+    .sort((a, b) => Number(b.isNew) - Number(a.isNew) || (a.task.postponeUntil ?? "").localeCompare(b.task.postponeUntil ?? ""));
+
   const doneCount = done.reduce((count, group) => count + group.items.length, 0);
   const closedCount = done.filter((group) => group.closed).length;
   return {
     weekStart, weekEnd, nextStart,
     isCurrent: weekStart === startOfWeek(today),
-    done, doneCount, closedCount, shifts, stuck, next,
-    noMovement: doneCount === 0 && closedCount === 0 && shifts.length === 0,
+    done, doneCount, closedCount, shifts, stuck, next, postponed,
+    noMovement: doneCount === 0 && closedCount === 0 && shifts.length === 0 && !postponed.some((entry) => entry.isNew),
   };
 }
 

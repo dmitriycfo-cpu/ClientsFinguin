@@ -96,3 +96,17 @@ describe("подписи и границы", () => {
     expect(weekAgeLabel("2026-08-31", TODAY)).toBe("5 недель назад");
   });
 });
+
+describe("weekReport — отложенные задачи", () => {
+  const paused: Task = { ...s2, status: "Отложено", postponeReason: "Ждём кошельки", postponeUntil: "2026-11-01", postponedAt: "2026-10-07" };
+  const report = weekReport([parent, s0, s1, paused, s3], "2026-10-05", TODAY);
+  it("не попадают в просрочку и в план, но видны отдельным списком", () => {
+    expect(report.stuck.map((entry) => entry.task.id)).not.toContain("s2");
+    expect(report.next.map((entry) => entry.task.id)).not.toContain("s2");
+    expect(report.postponed.map((entry) => [entry.task.id, entry.isNew])).toEqual([["s2", true]]);
+  });
+  it("откладывание на неделе — это движение", () => {
+    const quiet = weekReport([{ ...paused, postponedAt: "2026-10-07" }], "2026-10-05", TODAY);
+    expect(quiet.noMovement).toBe(false);
+  });
+});

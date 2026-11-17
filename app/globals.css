@@ -1603,3 +1603,43 @@ button.arc-title:hover b { text-decoration: underline; }
 .ctl-lock button { height: 38px; border: 0; border-radius: 9px; background: var(--navy); color: #fff; font-weight: 600; }
 .ctl-lock button:disabled { opacity: 0.5; cursor: default; }
 .ctl-state { padding: 48px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--muted); }
+
+/* Статусы «В плане» и «Отложено» */
+.status-plan { color: #4b5fa8; background: #eef0fb; }
+.status-paused { color: #6b6f7a; background: #ececef; }
+.status-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.postpone-until { color: #7d8797; font-size: 10px; white-space: nowrap; }
+.postpone-until.is-expired { color: var(--red); font-weight: 650; }
+.gantt-paused { color: #a3a8b3; background: repeating-linear-gradient(135deg, #b8bdc7 0 6px, #d4d8df 6px 12px); }
+.postpone-box { margin-top: 12px; padding: 12px 14px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; border: 1px solid #dcdfe6; border-radius: 10px; background: #f7f8fa; }
+.postpone-head strong { display: block; font-size: 13px; }
+.postpone-head span { color: #6b7280; font-size: 12px; }
+
+/* Вкладка «Неделя»: переключатель, резюме, регулярные задачи */
+.wk-tabs { display: inline-flex; gap: 4px; padding: 3px; justify-self: start; border: 1px solid var(--line); border-radius: 9px; background: #f4f6f9; }
+.wk-tabs button { padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 7px; background: none; color: #4e5b70; font-size: 12px; font-weight: 650; }
+.wk-tabs button.active { background: #fff; color: var(--navy); box-shadow: 0 1px 2px rgba(20, 35, 60, .12); }
+.nav-count.is-bad { background: #fde8e8; color: #b62f35; }
+.wk-note { display: grid; gap: 6px; }
+.wk-note > span { font-size: 12px; font-weight: 650; color: #3c4a62; }
+.wk-note small { margin-left: 6px; color: #8993a3; font-weight: 500; }
+.wk-note textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 12px; resize: vertical; background: #fff; }
+.wk-summary-link { padding: 6px 10px; border: 1px solid #c9d6ea; border-radius: 8px; background: #f3f7fd; color: #1765bd; font-size: 12px; cursor: pointer; }
+.wk-summary-link:hover { background: #e8f1ff; }
+.wk-subhead-paused { border-color: #e2e4e9; background: #f4f5f7; color: #5b6070; }
+.wk-reg { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.wk-reg-row { padding: 9px 14px; display: grid; grid-template-columns: 16px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; border-bottom: 1px solid var(--soft-line); font-size: 12px; }
+.wk-reg-row:last-child { border-bottom: 0; }
+.wk-reg-row.is-missed { background: #fffafa; }
+.wk-reg-row time { color: #7d8797; font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wk-tick-btn { margin: 0; padding: 0; cursor: pointer; }
+.wk-tick-btn:disabled { opacity: .45; cursor: default; }
+.wk-reg-title { min-width: 0; padding: 0; border: 0; display: grid; gap: 2px; background: none; color: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.wk-reg-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.wk-reg-title:hover b { text-decoration: underline; }
+.wk-reg-title small { color: #6b7587; font-size: 11px; }
+.wk-reg-title small.wk-reg-hint { color: #b62f35; }
+@media (max-width: 640px) {
+  .wk-reg-row { grid-template-columns: 16px minmax(0, 1fr); }
+  .wk-reg-row time, .wk-reg-row > .flag { grid-column: 2; justify-self: start; }
+}

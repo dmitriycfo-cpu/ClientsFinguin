@@ -42,6 +42,8 @@ import { closingMonthKey, isWorkTask, monthClosing, parentSummary, sprintHealth 
 import MonthClosingPopover from "@/components/month-closing-popover";
 import { plural } from "@/lib/plural";
 import { canDropTask, moveTask } from "@/lib/reorder";
+import { isPostponeExpired, validatePostpone, withPostpone } from "@/lib/postpone";
+import { toggleRegularDone } from "@/lib/week-regular";
 import { appendShift, needsShiftReason, originalEndDate, shiftReasonInfo, validateShift } from "@/lib/task-shifts";
 import {
   frequencyTitle,
@@ -77,7 +79,7 @@ import type { CheckpointMark } from "@/lib/checkpoint-dates";
 import { checkpointProgress, nextCheckpointCode, taskCheckpoints } from "@/lib/typical-tasks";
 import type { TypicalTaskTemplate } from "@/lib/typical-tasks";
 
-const TASK_STATUSES: TaskStatus[] = ["Не начато", "В работе", "На проверке", "Завершено", "Просрочено"];
+const TASK_STATUSES: TaskStatus[] = ["Не начато", "В плане", "В работе", "На проверке", "Завершено", "Просрочено", "Отложено"];
 const IDEA_STATUSES: IdeaStatus[] = ["Новая", "На обсуждении", "Одобрена", "В реализации", "Реализована", "Отклонена"];
 const PRIORITIES: Priority[] = ["Высокий", "Средний", "Низкий"];
 const REGULAR_FREQUENCIES: Array<{ value: RegularFrequency; label: string }> = [
@@ -190,7 +192,7 @@ function templateSprints(tasks: Task[], parentId: string | null) {
 }
 
 function isTaskOverdue(task: Task, today: Date) {
-  return task.status !== "Завершено" && (task.status === "Просрочено" || parseDate(task.endDate) < today);
+  return task.status !== "Завершено" && task.status !== "Отложено" && (task.status === "Просрочено" || parseDate(task.endDate) < today);
 }
 
 function taskOverlapsMonth(task: Task, monthStart: Date) {
@@ -205,6 +207,8 @@ function taskStatusClass(status: TaskStatus) {
   if (status === "Просрочено") return "status status-danger";
   if (status === "На проверке") return "status status-warning";
   if (status === "Не начато") return "status status-neutral";
+  if (status === "В плане") return "status status-plan";
+  if (status === "Отложено") return "status status-paused";
   return "status status-info";
 }
 
@@ -519,6 +523,10 @@ function TaskDialog({
       return setError("Проверьте даты начала и окончания.");
     }
     const labels = [...new Set(labelsText.split(",").map((label) => label.trim()).filter(Boolean))];
+    if (draft.status === "Отложено") {
+      const postponeError = validatePostpone(draft.postponeReason ?? "", draft.postponeUntil ?? "", today);
+      if (postponeError) return setError(postponeError);
+    }
     let saved: Task = { ...draft, labels, parentId: item?.template ? draft.parentId : taskType === "parent" ? null : draft.parentId, title: draft.title.trim(), assignee: draft.assignee.trim() };
     if (askReason && item) {
       const shiftError = validateShift(shift.reason, shift.note);
@@ -547,6 +555,13 @@ function TaskDialog({
             <label className="field">Дедлайн<input type="date" value={draft.endDate} onChange={(event) => setDraft({ ...draft, endDate: event.target.value })} /></label>
             {!item?.template && <label className="field field-wide">Статус<select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as TaskStatus })}>{TASK_STATUSES.map((status) => <option key={status}>{status}</option>)}</select><ChevronDown size={15} /></label>}
           </div>
+          {draft.status === "Отложено" && (
+            <div className="postpone-box">
+              <div className="postpone-head"><strong>Задача отложена</strong><span>Не считается ни «в работе», ни просроченной. Причина попадёт в комментарии и во вкладку «Неделя».</span></div>
+              <label className="field field-wide">Почему отложено<textarea rows={2} value={draft.postponeReason ?? ""} onChange={(event) => { setDraft({ ...draft, postponeReason: event.target.value }); setError(""); }} placeholder="Например: собственник не дал кошельки, вернёмся после получения данных" /></label>
+              <label className="field">Отложено примерно до<input type="date" value={draft.postponeUntil ?? ""} min={today} onChange={(event) => { setDraft({ ...draft, postponeUntil: event.target.value }); setError(""); }} /></label>
+            </div>
+          )}
           {askReason && item && <ShiftReasonFields from={item.endDate} to={draft.endDate} {...shift} openCheckpoints={openCheckpoints} onChange={(patch) => { setShift({ ...shift, ...patch }); setError(""); }} />}
           {item && <ShiftHistory task={item} />}
           {hasChecklist && (
@@ -967,7 +982,7 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
   // Выбор охвата для встречи из серии: удалить/поправить одну, хвост или всю серию.
   // Карточка встречи на это время закрывается, а её черновик ждёт здесь.
   const [seriesPrompt, setSeriesPrompt] = useState<{ mode: "delete" | "edit"; meeting: Meeting; draft: Meeting | null } | null>(null);
-  const [ganttFilter, setGanttFilter] = useState<"Все" | "В работе" | "Просрочено" | "Неделя" | "Архив">("Все");
+  const [ganttFilter, setGanttFilter] = useState<"Все" | "В плане" | "В работе" | "Отложено" | "Просрочено" | "Неделя" | "Архив">("Все");
   // Пока неделю не листали, показываем текущую — она сама сдвигается со сменой суток.
   const [pickedWeek, setPickedWeek] = useState<string | null>(null);
   const [baselineDate, setBaselineDate] = useState("");
@@ -1089,10 +1104,13 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
   // Всё, кроме отчёта недели и самого архива, видит только задачи вне архива.
   const liveTasks = useMemo(() => activeTasks(data.tasks), [data.tasks]);
   const archivedCount = useMemo(() => archiveCount(data.tasks), [data.tasks]);
+  const postponedCount = useMemo(() => liveTasks.filter((task) => task.status === "Отложено").length, [liveTasks]);
   const ordered = useMemo(() => orderedTasks(liveTasks), [liveTasks]);
   const filteredTasks = useMemo(() => {
     const matches = (task: Task) => {
       if (ganttFilter === "В работе") return task.status === "В работе" || task.status === "На проверке";
+      if (ganttFilter === "В плане") return task.status === "В плане" || task.status === "Не начато";
+      if (ganttFilter === "Отложено") return task.status === "Отложено";
       if (ganttFilter === "Просрочено") return isTaskOverdue(task, today);
       return true;
     };
@@ -1347,7 +1365,7 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
   function saveTask(task: Task) {
     commit((current) => {
       const original = current.tasks.find((item) => item.id === task.id) ?? null;
-      const saved = withCompletion(original, task, todayKey);
+      const saved = withPostpone(original, withCompletion(original, task, todayKey), todayKey);
       return {
         ...current,
         people: mergePeople(current.people, [saved.assignee]),
@@ -1523,6 +1541,18 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
     });
     setSeriesPrompt(null);
     setModal(null);
+  }
+
+  function toggleRegularOccurrence(task: RegularTask, plannedDate: string) {
+    commit((current) => ({ ...current, regularTasks: current.regularTasks.map((item) => item.id === task.id ? toggleRegularDone(item, plannedDate, todayKey) : item) }));
+  }
+
+  function saveWeekNote(week: string, value: string) {
+    commit((current) => {
+      const notes = { ...(current.weekNotes ?? {}) };
+      if (value) notes[week] = value; else delete notes[week];
+      return { ...current, weekNotes: notes };
+    });
   }
 
   function saveRegularTask(task: RegularTask) {
@@ -1837,7 +1867,7 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
 
       <section className="card roadmap-card" ref={roadmapRef}>
         <div className="section-head">
-          <div className="section-title-wrap"><h2>Дорожная карта</h2><nav>{(["Все", "В работе", "Просрочено", "Неделя", "Архив"] as const).map((filter) => <button key={filter} className={ganttFilter === filter ? "active" : ""} onClick={() => setGanttFilter(filter)}>{filter}{filter === "Архив" && archivedCount > 0 && <span className="nav-count">{archivedCount}</span>}</button>)}</nav></div>
+          <div className="section-title-wrap"><h2>Дорожная карта</h2><nav>{(["Все", "В плане", "В работе", "Отложено", "Просрочено", "Неделя", "Архив"] as const).map((filter) => <button key={filter} className={ganttFilter === filter ? "active" : ""} onClick={() => setGanttFilter(filter)}>{filter}{filter === "Архив" && archivedCount > 0 && <span className="nav-count">{archivedCount}</span>}{filter === "Отложено" && postponedCount > 0 && <span className="nav-count">{postponedCount}</span>}</button>)}</nav></div>
           <div className="roadmap-actions">
             {ganttFilter === "Архив" ? null : ganttFilter === "Неделя" ? (
               <div className="wk-switch">
@@ -1892,7 +1922,7 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
         {ganttFilter === "Архив"
           ? <ArchiveView tasks={data.tasks} onOpenTask={(task) => setModal({ kind: "task", item: task })} onRestore={restoreTaskById} onDelete={deleteTask} />
           : ganttFilter === "Неделя"
-          ? <WeekReportView tasks={data.tasks} today={todayKey} weekStart={weekStart} onOpenTask={(task) => setModal({ kind: "task", item: task })} />
+          ? <WeekReportView tasks={data.tasks} regularTasks={data.regularTasks} weekNote={data.weekNotes?.[weekStart] ?? ""} today={todayKey} weekStart={weekStart} onOpenTask={(task) => setModal({ kind: "task", item: task })} onToggleRegular={toggleRegularOccurrence} onOpenRegular={(task, plannedDate) => setModal({ kind: "regular-period", task, monthStart: toISO(startOfMonth(parseDate(plannedDate))) })} onSaveNote={(value) => saveWeekNote(weekStart, value)} />
           : <div className="gantt-grid">
           <div className="task-table" ref={taskTableRef}>
             <div className="task-table-head"><span>Задача</span><span>Ответственный</span><span>Статус</span><span>Срок</span></div>
@@ -1936,7 +1966,7 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
                     </span>
                   </span>
                   <span className="assignee-cell">{task.assignee || "—"}</span>
-                  <span><em className={taskStatusClass(isTaskOverdue(task, today) ? "Просрочено" : task.status)}>{isTaskOverdue(task, today) ? "Просрочено" : task.status}</em></span>
+                  <span className="status-cell"><em className={taskStatusClass(isTaskOverdue(task, today) ? "Просрочено" : task.status)} title={task.status === "Отложено" ? (task.postponeReason || "") : undefined}>{isTaskOverdue(task, today) ? "Просрочено" : task.status}</em>{task.status === "Отложено" && task.postponeUntil && <small className={"postpone-until" + (isPostponeExpired(task, todayKey) ? " is-expired" : "")} title={task.postponeReason}>{isPostponeExpired(task, todayKey) ? "пора вернуться · " : "до "}{formatShortDate(task.postponeUntil)}</small>}</span>
                   <span className="deadline-cell">{formatShortDate(task.endDate)}<MoreHorizontal size={15} /></span>
                 </div>
               );
@@ -1964,7 +1994,7 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
                   const marks = task.parentId ? checkpointMarks(task, todayKey) : [];
                   return (
                     <div className="gantt-row" key={task.id} style={{ height: taskRowHeights[task.id] ?? 46 }}>
-                      <button aria-label={"Редактировать " + task.title} onClick={() => setModal({ kind: "task", item: task })} className={"gantt-bar gantt-" + (isTaskOverdue(task, today) ? "overdue" : task.status === "Завершено" ? "done" : task.status === "Не начато" ? "planned" : "active") + (task.parentId ? "" : " gantt-parent")} style={ganttBarStyle(task.startDate, task.endDate)} title={task.title + " · " + formatShortDate(task.startDate) + " — " + formatShortDate(task.endDate) + (progress && progress.total > 0 ? " · точки " + progress.done + "/" + progress.total : "")}><span>{task.title}</span>{marks.length === 0 && <i />}</button>
+                      <button aria-label={"Редактировать " + task.title} onClick={() => setModal({ kind: "task", item: task })} className={"gantt-bar gantt-" + (isTaskOverdue(task, today) ? "overdue" : task.status === "Завершено" ? "done" : task.status === "Отложено" ? "paused" : task.status === "Не начато" || task.status === "В плане" ? "planned" : "active") + (task.parentId ? "" : " gantt-parent")} style={ganttBarStyle(task.startDate, task.endDate)} title={task.title + " · " + formatShortDate(task.startDate) + " — " + formatShortDate(task.endDate) + (progress && progress.total > 0 ? " · точки " + progress.done + "/" + progress.total : "")}><span>{task.title}</span>{marks.length === 0 && <i />}</button>
                       {shift?.segments.map((segment) => <i key={segment.id} className={"gantt-delta" + (segment.inside ? "" : " gantt-delta-outside") + (task.parentId ? "" : " gantt-delta-parent")} style={ganttBarStyle(segment.from, segment.to)} title={shiftTitle} />)}
                       {ownShift && <i className={"gantt-delta" + (task.parentId ? "" : " gantt-delta-parent")} style={ganttBarStyle(ownShift.from, ownShift.to)} title={"Исходный срок " + formatShortDate(ownFrom) + " · переносов: " + task.shifts!.length} />}
                       {marks.map((mark) => (

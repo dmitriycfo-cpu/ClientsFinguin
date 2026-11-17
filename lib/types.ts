@@ -1,9 +1,11 @@
 export type TaskStatus =
   | "Не начато"
+  | "В плане"
   | "В работе"
   | "На проверке"
   | "Завершено"
-  | "Просрочено";
+  | "Просрочено"
+  | "Отложено";
 
 export type IdeaStatus =
   | "Новая"
@@ -91,6 +93,10 @@ export interface Task {
   completedAt?: string;
   // День отправки в архив. Спринты архивной надзадачи прячутся вместе с ней, своё поле им не ставится.
   archivedAt?: string;
+  // Статус «Отложено»: почему отложили, примерная дата возврата и день, когда отложили.
+  postponeReason?: string;
+  postponeUntil?: string;
+  postponedAt?: string;
 }
 
 export interface BaselineTask {
@@ -173,4 +179,6 @@ export interface DashboardData {
   // Ручные отметки закрытия месяца: «ГГГГ-ММ» закрываемого месяца → день закрытия.
   // Если отметка есть, она главнее расчёта по ежемесячным регулярным задачам.
   monthClosings?: Record<string, string>;
+  // Резюме недели: понедельник «ГГГГ-ММ-ДД» → несколько строк о том, что происходило.
+  weekNotes?: Record<string, string>;
 }

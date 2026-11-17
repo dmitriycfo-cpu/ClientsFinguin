@@ -63,7 +63,7 @@ export function collectCalendarTasks(
     const children = data.tasks.filter((item) => item.parentId === task.id);
     const repeatsChild = children.some((child) => child.endDate === task.endDate);
     if (inRange(task.endDate) && !repeatsChild) {
-      const overdue = task.status !== "Завершено" && (task.status === "Просрочено" || task.endDate < todayKey);
+      const overdue = task.status !== "Завершено" && task.status !== "Отложено" && (task.status === "Просрочено" || task.endDate < todayKey);
       result.push({
         key: "gantt:" + task.id,
         source: "gantt",

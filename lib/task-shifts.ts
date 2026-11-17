@@ -25,11 +25,12 @@ export function shiftReasonInfo(reason: ShiftReason) {
   return SHIFT_REASONS.find((item) => item.value === reason) ?? SHIFT_REASONS[SHIFT_REASONS.length - 1];
 }
 
-// Причину спрашиваем, когда у существующей рабочей задачи срок окончания стал позже.
-// Сроки надзадачи со спринтами следуют за спринтами — у неё не спрашиваем.
-export function needsShiftReason(original: Task | null, next: Task, tasks: Task[]) {
+// Причину спрашиваем, когда у существующей задачи срок окончания стал позже — и у спринта,
+// и у надзадачи: иначе надзадачу можно было молча сдвинуть на месяцы. Отложенную задачу
+// не спрашиваем — у неё уже есть причина и дата возврата.
+export function needsShiftReason(original: Task | null, next: Task, _tasks: Task[]) {
   if (!original) return false;
-  if (tasks.some((task) => task.parentId === original.id)) return false;
+  if (next.status === "Отложено") return false;
   return next.endDate > original.endDate;
 }
 
