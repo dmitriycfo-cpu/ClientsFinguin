@@ -17,6 +17,8 @@ import {
   LoaderCircle,
   MessageSquareText,
   MoreHorizontal,
+  Maximize2,
+  Minimize2,
   Pencil,
   Plus,
   Repeat2,
@@ -1048,6 +1050,7 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
   const ganttScrollRef = useRef<HTMLDivElement | null>(null);
   const taskTableRef = useRef<HTMLDivElement | null>(null);
   const [taskRowHeights, setTaskRowHeights] = useState<Record<string, number>>({});
+  const [ganttExpanded, setGanttExpanded] = useState(false);
   // Тост — обобщённое короткое уведомление внизу экрана; пока используется только после
   // добавления типовой задачи, но не завязано на неё напрямую.
   const [toast, setToast] = useState("");
@@ -1174,6 +1177,22 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
     return () => observer.disconnect();
   }, [visibleTasks, activePage]);
 
+  // Диаграмма на весь экран: страница под ней не прокручивается, Esc сворачивает.
+  // Пока открыта карточка задачи, Esc закрывает только её.
+  useEffect(() => {
+    if (!ganttExpanded) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !modal) setGanttExpanded(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [ganttExpanded, modal]);
+
   const baselineDates = useMemo(() => Object.keys(data.baselines || {}).sort(), [data.baselines]);
   // Показываем ближайший снимок на выбранную дату или раньше — так дату можно назвать любую,
   // а не выбирать из списка сохранённых.
@@ -1264,6 +1283,16 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
     }
     return { start, end, totalDays, months };
   }, [liveTasks, baseline, today]);
+  // Засечки под месяцами: 1, 5, 10, 15, 20 и 25 число — чтобы по шкале читался день.
+  // 30-е не подписываем: оно почти упирается в «1» следующего месяца.
+  const ganttDays = useMemo(() => {
+    const days: Array<{ key: string; day: number }> = [];
+    for (const cursor = new Date(ganttRange.start); cursor <= ganttRange.end; cursor.setDate(cursor.getDate() + 1)) {
+      const day = cursor.getDate();
+      if (day === 1 || (day % 5 === 0 && day < 30)) days.push({ key: toISO(cursor), day });
+    }
+    return days;
+  }, [ganttRange]);
 
   const ideaRows = useMemo(() => {
     const search = ideaSearch.trim().toLowerCase();
@@ -1780,7 +1809,9 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
     if (!scroller) return;
     const monthStart = startOfMonth(parseDate(value));
     const daysFromRangeStart = Math.max(0, Math.round((monthStart.getTime() - ganttRange.start.getTime()) / 86400000));
-    const monthPosition = daysFromRangeStart / ganttRange.totalDays * ganttTimelineWidth;
+    // На весь экран шкала растягивается шире ganttTimelineWidth — берём её настоящую ширину.
+    const timelineWidth = (scroller.firstElementChild as HTMLElement | null)?.offsetWidth || ganttTimelineWidth;
+    const monthPosition = daysFromRangeStart / ganttRange.totalDays * timelineWidth;
     scroller.scrollTo({ left: Math.max(0, monthPosition - 16), behavior: "smooth" });
   }
 
@@ -1898,9 +1929,9 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
         )}
       </div>
 
-      <section className="card roadmap-card" ref={roadmapRef}>
+      <section className={"card roadmap-card" + (ganttExpanded ? " roadmap-expanded" : "")} ref={roadmapRef} role={ganttExpanded ? "dialog" : undefined} aria-label={ganttExpanded ? "Дорожная карта на весь экран" : undefined}>
         <div className="section-head">
-          <div className="section-title-wrap"><h2>Дорожная карта</h2><nav>{(["Все", "В плане", "В работе", "Отложено", "Просрочено", "Неделя", "Архив"] as const).map((filter) => <button key={filter} className={ganttFilter === filter ? "active" : ""} onClick={() => setGanttFilter(filter)}>{filter}{filter === "Архив" && archivedCount > 0 && <span className="nav-count">{archivedCount}</span>}{filter === "Отложено" && postponedCount > 0 && <span className="nav-count">{postponedCount}</span>}</button>)}</nav></div>
+          {ganttExpanded ? <h2>Дорожная карта<small className="roadmap-client">{data.clientName}</small></h2> : <div className="section-title-wrap"><h2>Дорожная карта</h2><nav>{(["Все", "В плане", "В работе", "Отложено", "Просрочено", "Неделя", "Архив"] as const).map((filter) => <button key={filter} className={ganttFilter === filter ? "active" : ""} onClick={() => setGanttFilter(filter)}>{filter}{filter === "Архив" && archivedCount > 0 && <span className="nav-count">{archivedCount}</span>}{filter === "Отложено" && postponedCount > 0 && <span className="nav-count">{postponedCount}</span>}</button>)}</nav></div>}
           <div className="roadmap-actions">
             {ganttFilter === "Архив" ? null : ganttFilter === "Неделя" ? (
               <div className="wk-switch">
@@ -1908,7 +1939,11 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
                 <strong>{formatWeekRange(weekStart)}<small>{weekAgeLabel(weekStart, todayKey)}</small></strong>
                 <button type="button" className="icon-button" aria-label="Следующая неделя" disabled={weekStart >= weekRange.last} onClick={() => setPickedWeek(addDays(weekStart, 7) >= weekRange.last ? null : addDays(weekStart, 7))}><ChevronRight size={16} /></button>
               </div>
-            ) : (<>
+            ) : ganttExpanded ? (<>
+            <span className="expand-hint">Esc — свернуть</span>
+            <button className="secondary today-button" onClick={() => scrollGanttToDate(toISO(today))}><CalendarDays size={16} />Сегодня</button>
+            <button type="button" className="expand-button" aria-label="Свернуть" data-tip="Свернуть" onClick={() => setGanttExpanded(false)}><Minimize2 size={16} /></button>
+            </>) : (<>
             {parentIds.length > 0 && ganttFilter === "Все" && <button type="button" className="secondary" onClick={() => setCollapsedTaskIds(anyCollapsed ? new Set() : new Set(parentIds))}>{anyCollapsed ? "Развернуть всё" : "Свернуть всё"}</button>}
             <div className="baseline-control" onBlur={(event) => {
               if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setBaselineMenuOpen(false);
@@ -1949,6 +1984,10 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
             <button className="secondary today-button" onClick={() => scrollGanttToDate(toISO(today))}><CalendarDays size={16} />Сегодня</button>
             <button className="secondary template-button" onClick={() => setModal({ kind: "template" })}><ClipboardCheck size={16} />Типовая задача</button>
             <button className="primary" onClick={() => setModal({ kind: "task", item: null })}><Plus size={17} />Новая задача</button>
+            <button type="button" className="expand-button" aria-label="Развернуть диаграмму на весь экран" data-tip="Развернуть на весь экран" onClick={() => {
+              setGanttExpanded(true);
+              requestAnimationFrame(() => scrollGanttToDate(toISO(today)));
+            }}><Maximize2 size={16} /></button>
             </>)}
           </div>
         </div>
@@ -2019,6 +2058,7 @@ export default function Dashboard({ initialData, initialStorage, serverToday, te
           <div className="gantt-chart-scroll" ref={ganttScrollRef} aria-label="Прокручиваемая временная шкала">
             <div className="gantt-chart" style={{ width: ganttTimelineWidth }}>
               <div className="gantt-months">{ganttRange.months.map((month) => <span key={month.key} style={{ width: (month.days / ganttRange.totalDays * 100) + "%" }}>{month.label}</span>)}</div>
+              <div className="gantt-days" aria-hidden="true">{ganttDays.map((tick) => <span key={tick.key} className={tick.day === 1 ? "gantt-day-first" : undefined} style={{ left: ganttDayCenter(tick.key) + "%" }}>{tick.day}</span>)}</div>
               <div className="gantt-lines">{Array.from({ length: weekLineCount }, (_, index) => <i key={index} style={{ left: (index * 7 / ganttRange.totalDays * 100) + "%" }} />)}</div>
               {todayPercent >= 0 && todayPercent <= 100 && <div className="today-line" style={{ left: todayPercent + "%" }}><span>Сегодня</span></div>}
               <div className="gantt-bars">

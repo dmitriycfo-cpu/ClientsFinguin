@@ -752,7 +752,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .gantt-chart-scroll::-webkit-scrollbar-thumb { border: 2px solid #edf1f6; border-radius: 8px; background: #aebbd0; }
 .gantt-chart { position: relative; min-width: 100%; overflow: hidden; }
 .gantt-months {
-  height: 44px;
+  height: 24px;
   display: flex;
   align-items: center;
   text-align: center;
@@ -761,13 +761,18 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   border-bottom: 1px solid var(--soft-line);
 }
 .gantt-months span {
-  height: 44px;
+  height: 24px;
   flex: 0 0 auto;
   display: grid;
   place-items: center;
   border-right: 1px solid #dfe5ed;
   text-transform: capitalize;
 }
+/* Строка дней под месяцами: вместе с месяцами (24 + 20) ровно по высоте шапки таблицы задач. */
+.gantt-days { position: relative; height: 20px; border-bottom: 1px solid var(--soft-line); color: #8a95a7; font-size: 9.5px; font-variant-numeric: tabular-nums; }
+.gantt-days span { position: absolute; top: 0; height: 20px; padding-bottom: 4px; display: grid; place-items: center; transform: translateX(-50%); line-height: 1; }
+.gantt-days span::after { position: absolute; bottom: 0; left: 50%; width: 1px; height: 3px; background: #c9d2de; content: ""; }
+.gantt-days .gantt-day-first { color: #405066; font-weight: 650; }
 .gantt-lines { position: absolute; top: 44px; right: 0; bottom: 0; left: 0; }
 .gantt-lines i { position: absolute; top: 0; bottom: 0; width: 1px; background: #edf1f5; }
 .today-line { position: absolute; z-index: 3; top: 44px; bottom: 0; width: 1px; background: #ff5d64; }
@@ -1682,4 +1687,25 @@ button.arc-title:hover b { text-decoration: underline; }
   .roadmap-card > .section-head .roadmap-actions > .primary { grid-column: 1 / -1; }
   .roadmap-card > .section-head .roadmap-actions > .wk-switch { grid-column: 1 / -1; }
   .roadmap-card > .section-head nav { gap: 16px; }
+}
+
+/* Дорожная карта на весь экран: только диаграмма и колонка с названиями задач.
+   Слой ниже модальных окон (100), чтобы карточка задачи открывалась поверх. */
+.roadmap-card.roadmap-expanded { position: fixed; z-index: 90; inset: 0; margin: 0; display: flex; flex-direction: column; border: 0; border-radius: 0; box-shadow: none; }
+.roadmap-expanded .section-head { flex: 0 0 auto; }
+.roadmap-client { margin-left: 10px; color: var(--muted); font-size: 13px; font-weight: 500; letter-spacing: 0; }
+.roadmap-expanded .gantt-grid { flex: 1 1 auto; min-width: 0; min-height: 0; overflow-y: auto; align-content: start; grid-template-columns: 320px minmax(0, 1fr); }
+.roadmap-expanded .task-table { min-width: 0; }
+.roadmap-expanded .task-table-head, .roadmap-expanded .task-table-row { grid-template-columns: minmax(0, 1fr); }
+.roadmap-expanded .task-table-head span + span,
+.roadmap-expanded .assignee-cell,
+.roadmap-expanded .status-cell,
+.roadmap-expanded .deadline-cell { display: none; }
+.expand-hint { color: #9aa4b4; font-size: 11px; }
+.expand-button { position: relative; width: 37px; height: 37px; flex: 0 0 auto; padding: 0; border: 1px solid #d7dde7; border-radius: 6px; display: grid; place-items: center; background: #fff; color: #435067; }
+.expand-button:hover { border-color: #b9cae3; background: #edf4fd; color: var(--navy); }
+.expand-button[data-tip]:hover::after { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; padding: 4px 8px; border-radius: 5px; background: #1c2840; color: #fff; font-size: 11px; font-weight: 500; white-space: nowrap; content: attr(data-tip); pointer-events: none; }
+@media (max-width: 760px) {
+  .roadmap-expanded .gantt-grid { grid-template-columns: 180px minmax(0, 1fr); }
+  .expand-hint { display: none; }
 }
