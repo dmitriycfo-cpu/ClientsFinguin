@@ -28,7 +28,14 @@ jobs:
     if: github.repository == 'dmitriycfo-cpu/ClientsFinguin'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      has_token: ${{ steps.token.outputs.has_token }}
     steps:
+      - name: Есть ли токен Vercel
+        id: token
+        run: |
+          echo "has_token=${{ secrets.VERCEL_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+          if [ "${{ secrets.VERCEL_TOKEN != '' }}" != "true" ]; then echo "::warning::Нет секрета VERCEL_TOKEN — выкладка пропущена"; fi
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
@@ -45,6 +52,7 @@ jobs:
 
   deploy:
     needs: test
+    if: needs.test.outputs.has_token == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
