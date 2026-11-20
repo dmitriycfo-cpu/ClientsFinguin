@@ -1,0 +1,64 @@
+# Выкладка карты клиента в команду Vercel finguin — по push в main и
+# вручную (так её запускает /new-roadmap плагина roadmap).
+# Работает только в копиях клиентов finguin-agency/roadmap-<имя>: там
+# /new-roadmap ставит переменную ROADMAP_DEPLOY=on. В главной версии
+# переменной нет — работа пропускается, прежние проекты Vercel
+# выкладываются через подключённый Git, как раньше.
+# Собирает сайт здесь, в Actions, и отдаёт Vercel готовую сборку
+# (--prebuilt), как ФинПанель: сборку на стороне Vercel он блокирует, если
+# автор коммита — не участник команды Vercel (TEAM_ACCESS_REQUIRED).
+name: Выкладка на Vercel
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vercel-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: vars.ROADMAP_DEPLOY == 'on'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Самопроверки
+        run: pnpm test
+      - name: Проект Vercel и база
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          NEON_ORG_ID: ${{ vars.NEON_ORG_ID }}
+          CLIENT_NAME: ${{ vars.CLIENT_NAME }}
+          CONTROL_PASSWORD: ${{ vars.CONTROL_PASSWORD }}
+        run: node scripts/provision.mjs
+      - name: Сборка
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+        run: |
+          npx --yes vercel@64.5.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@64.5.0 build --prod --token="$VERCEL_TOKEN"
+      - name: Выкладка
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+        run: npx --yes vercel@64.5.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+      - name: Адрес сайта
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+        run: node scripts/provision.mjs --address

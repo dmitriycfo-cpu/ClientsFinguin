@@ -486,7 +486,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .check-tools button:hover { background: #eaf1fb; color: var(--navy); }
 .check-tools .info-button { border: 1px solid #c9d6e8; border-radius: 50%; background: #fff; color: var(--navy-2); font-size: 11px; font-weight: 700; font-family: Georgia, serif; font-style: italic; }
 .check-tools .info-button:hover, .check-tools .info-button.info-open { background: var(--blue-soft); border-color: #9db8dd; }
-.check-note { grid-column: 2 / -1; margin: 2px 0 4px; padding: 9px 12px; border-left: 3px solid #9db8dd; border-radius: 0 8px 8px 0; background: #f3f7fc; color: #33425a; font-size: 12px; line-height: 1.5; }
+.check-note { grid-column: 2 / -1; margin: 2px 0 4px; padding: 9px 12px; white-space: pre-line; border-left: 3px solid #9db8dd; border-radius: 0 8px 8px 0; background: #f3f7fc; color: #33425a; font-size: 12px; line-height: 1.5; }
 .check-note b { display: block; margin-bottom: 2px; color: var(--navy); }
 .check-edit { grid-column: 3 / -1; display: grid; gap: 8px; margin: 2px 0 6px; padding: 10px 12px; border: 1px solid #c9d6e8; border-radius: 8px; background: #fbfcfe; }
 .check-edit label { display: grid; gap: 4px; color: #4e5b70; font-size: 10px; font-weight: 650; }
@@ -1161,6 +1161,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .regular-occurrence-head small { color: #8993a2; font-size: 9px; }
 .regular-occurrence-head strong { font-size: 14px; }
 .regular-occurrence .field:last-child { margin-bottom: 0; }
+.regular-occurrence.is-cancelled { background: #f7f9fb; }
+.regular-occurrence.is-cancelled strong { color: #8b95a4; text-decoration: line-through; }
+.regular-occurrence-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 10px; }
+.regular-link-button { padding: 2px 0; display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; color: #215da8; font-size: 10px; font-weight: 650; cursor: pointer; }
+.regular-link-button:hover { color: #163f73; text-decoration: underline; }
+.regular-moved-note { color: #a85d08; font-size: 10px; }
+.regular-moved-note .regular-link-button { font-size: 10px; }
+.regular-move-input { width: 150px; padding: 4px 6px; border: 1px solid #c5d7ee; border-radius: 6px; font: inherit; font-size: 13px; }
+.regular-status-cancelled { color: #7a8494; background: #eef1f4; text-decoration: line-through; }
+.regular-dates small svg { margin-left: 4px; vertical-align: -1px; color: #a85d08; }
 
 .modal-backdrop {
   position: fixed;
@@ -1511,9 +1521,37 @@ button.wk-group-title:hover, button.wk-shift-top:hover { color: var(--navy); }
 .wk-switch strong small { display: block; color: #7d8797; font-size: 10px; font-weight: 600; }
 .wk-switch .icon-button { border: 1px solid #d7dde7; background: #fff; }
 .wk-switch .icon-button:disabled { opacity: .35; cursor: default; }
+.wk-tabs { justify-self: start; max-width: 100%; padding: 4px; display: inline-flex; flex-wrap: wrap; gap: 2px; border: 1px solid var(--line); border-radius: 10px; background: #f3f5f9; }
+.wk-tabs button { padding: 7px 14px; border: 0; border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; background: none; color: #4e5b70; font-size: 13px; font-weight: 650; }
+.wk-tabs button:hover { color: var(--navy); }
+.wk-tabs button.active { background: #fff; color: var(--navy); box-shadow: 0 1px 3px rgba(20, 35, 70, .12); }
+.wk-tab-count { padding: 1px 6px; border-radius: 9px; background: #edf2f8; color: #627087; font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.wk-note { display: grid; gap: 6px; }
+.wk-note > span { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.wk-note b { font-size: 13px; }
+.wk-note small { color: #8993a3; font-size: 11px; }
+.wk-note textarea { width: 100%; min-height: 54px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: inherit; font: inherit; font-size: 13px; line-height: 1.45; resize: vertical; }
+.wk-note textarea:focus { outline: 2px solid var(--blue-soft); border-color: var(--blue); }
+.wk-item time.is-late { color: var(--red); }
+.wk-reg { padding: 9px 14px; display: grid; grid-template-columns: 16px minmax(0, 1fr) auto 104px; gap: 10px; align-items: center; border-bottom: 1px solid var(--soft-line); font-size: 12px; }
+.wk-reg:last-child { border-bottom: 0; }
+.wk-check { margin: 0; padding: 0; cursor: pointer; }
+.wk-check:hover { border-color: var(--teal); }
+.wk-check:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.wk-reg-title { min-width: 0; padding: 0; border: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; background: none; color: inherit; text-align: left; }
+.wk-reg-title b { font-size: 13px; font-weight: 650; }
+.wk-reg-title:hover b { color: var(--navy); }
+.wk-reg-title small { color: #8993a3; font-size: 11px; }
+.wk-reg time { color: #7d8797; font-size: 11px; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+.wk-reg time small { display: block; color: #9a5a0a; font-size: 10px; }
+.wk-reg .regular-status { justify-self: end; }
+.wk-check.is-later { border-color: #d99a3a; background: #fff8ec; color: #b06f12; }
+
 @media (max-width: 640px) {
   .wk-item { grid-template-columns: 16px 52px minmax(0, 1fr); }
   .wk-item time { grid-column: 3; }
+  .wk-reg { grid-template-columns: 16px minmax(0, 1fr) auto; }
+  .wk-reg .regular-status { grid-column: 2 / 4; justify-self: start; }
 }
 
 /* Вкладка «Архив»: надзадачи и спринты, убранные с дорожной карты */
@@ -1615,34 +1653,8 @@ button.arc-title:hover b { text-decoration: underline; }
 .postpone-head strong { display: block; font-size: 13px; }
 .postpone-head span { color: #6b7280; font-size: 12px; }
 
-/* Вкладка «Неделя»: переключатель, резюме, регулярные задачи */
-.wk-tabs { display: inline-flex; gap: 4px; padding: 3px; justify-self: start; border: 1px solid var(--line); border-radius: 9px; background: #f4f6f9; }
-.wk-tabs button { padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 7px; background: none; color: #4e5b70; font-size: 12px; font-weight: 650; }
-.wk-tabs button.active { background: #fff; color: var(--navy); box-shadow: 0 1px 2px rgba(20, 35, 60, .12); }
-.nav-count.is-bad { background: #fde8e8; color: #b62f35; }
-.wk-note { display: grid; gap: 6px; }
-.wk-note > span { font-size: 12px; font-weight: 650; color: #3c4a62; }
-.wk-note small { margin-left: 6px; color: #8993a3; font-weight: 500; }
-.wk-note textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 12px; resize: vertical; background: #fff; }
-.wk-summary-link { padding: 6px 10px; border: 1px solid #c9d6ea; border-radius: 8px; background: #f3f7fd; color: #1765bd; font-size: 12px; cursor: pointer; }
-.wk-summary-link:hover { background: #e8f1ff; }
+/* Вкладка «Неделя»: отложенные задачи */
 .wk-subhead-paused { border-color: #e2e4e9; background: #f4f5f7; color: #5b6070; }
-.wk-reg { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-.wk-reg-row { padding: 9px 14px; display: grid; grid-template-columns: 16px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; border-bottom: 1px solid var(--soft-line); font-size: 12px; }
-.wk-reg-row:last-child { border-bottom: 0; }
-.wk-reg-row.is-missed { background: #fffafa; }
-.wk-reg-row time { color: #7d8797; font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.wk-tick-btn { margin: 0; padding: 0; cursor: pointer; }
-.wk-tick-btn:disabled { opacity: .45; cursor: default; }
-.wk-reg-title { min-width: 0; padding: 0; border: 0; display: grid; gap: 2px; background: none; color: inherit; font-size: 12px; text-align: left; cursor: pointer; }
-.wk-reg-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.wk-reg-title:hover b { text-decoration: underline; }
-.wk-reg-title small { color: #6b7587; font-size: 11px; }
-.wk-reg-title small.wk-reg-hint { color: #b62f35; }
-@media (max-width: 640px) {
-  .wk-reg-row { grid-template-columns: 16px minmax(0, 1fr); }
-  .wk-reg-row time, .wk-reg-row > .flag { grid-column: 2; justify-self: start; }
-}
 
 /* Шапка дорожной карты: заголовок и кнопки в первой строке, вкладки — во второй,
    чтобы при семи вкладках ничего не переносилось по словам */

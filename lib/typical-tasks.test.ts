@@ -8,8 +8,8 @@ const templates = parseTypicalTasks(markdown);
 const byCode = (code: string) => templates.find((template) => template.code === code)!;
 
 describe("parseTypicalTasks: реальный справочник", () => {
-  it("находит обе задачи с длительностью и предпосылкой", () => {
-    expect(templates.map((template) => template.code)).toEqual(["ДДС", "ФМ"]);
+  it("находит все задачи с длительностью и предпосылкой", () => {
+    expect(templates.map((template) => template.code)).toEqual(["СТАРТ", "ДДС", "ФМ", "ОПиУ", "ПРОД", "ФИН", "ОС", "ДЗКЗ", "НАЛ", "ЗП", "СКЛ", "БАЛ", "УП"]);
     expect(byCode("ДДС")).toMatchObject({ title: "Отчёт о движении денежных средств", weeks: 3 });
     expect(byCode("ДДС").premise).toBe("Предпосылка: используется сервис с интеграцией банковских выписок");
     expect(byCode("ФМ").premise.startsWith("Ритм встреч: интервью — одна встреча;")).toBe(true);
@@ -63,6 +63,22 @@ describe("parseTypicalTasks: реальный справочник", () => {
     expect(withNotes("ДДС")).toBe(7);
     expect(withNotes("ФМ")).toBe(9);
   });
+
+  it("переносит задачи финдира: недели, пункты и названия без слова «Блок»", () => {
+    const shape = Object.fromEntries(["СТАРТ", "ОПиУ", "ПРОД", "ФИН", "ОС", "ДЗКЗ", "НАЛ", "ЗП", "СКЛ", "БАЛ", "УП"].map((code) => [code, [byCode(code).weeks, countCheckpoints(byCode(code))]]));
+    expect(shape).toEqual({ СТАРТ: [1, 7], ОПиУ: [2, 11], ПРОД: [2, 9], ФИН: [2, 5], ОС: [2, 6], ДЗКЗ: [3, 12], НАЛ: [2, 11], ЗП: [2, 11], СКЛ: [2, 7], БАЛ: [1, 3], УП: [1, 1] });
+    expect(templates.filter((template) => /блок/i.test(template.title))).toEqual([]);
+    expect(byCode("ПРОД").title).toBe("Учёт сделок (отчёт по продажам)");
+  });
+
+  it("хранит списки в заметках финдира построчно", () => {
+    const items = byCode("ЗП").subtasks[1].groups[0].items;
+    const note = items.find((item) => item.code === "ЗП-2.6")!.note;
+    expect(note.split("\n")).toHaveLength(8);
+    expect(note.startsWith("- Соотношение долей административной")).toBe(true);
+    const plain = byCode("ОПиУ").subtasks[0].groups[0].items[1];
+    expect(plain).toMatchObject({ code: "ОПиУ-1.2", note: "" });
+  });
 });
 
 describe("parseTypicalTasks: ошибки формата", () => {
@@ -100,6 +116,12 @@ describe("parseTypicalTasks: ошибки формата", () => {
     const text = "\n# ТЕСТ. Тестовая задача\n\n**Длительность:** 1 неделя\n";
     expect(() => parseTypicalTasks(text)).toThrow(/нет спринтов/);
     expect(() => parseTypicalTasks(text)).toThrow(/строка 2/);
+  });
+
+  it("сохраняет списки в заметке отдельными строками", () => {
+    const text = head + "- [ ] `ТЕСТ-1.1` Пункт `(i)`\n\n## Заметки к задаче ТЕСТ\n\n**`ТЕСТ-1.1` Заголовок**\nВводный текст,\nпродолжение.\n- первый пункт\n- второй\n  с продолжением\n";
+    const [item] = parseTypicalTasks(text)[0].subtasks[0].groups[0].items;
+    expect(item.note).toBe("Вводный текст, продолжение.\n- первый пункт\n- второй с продолжением");
   });
 
   it("игнорирует шаблон в блоке кода и вводную часть", () => {

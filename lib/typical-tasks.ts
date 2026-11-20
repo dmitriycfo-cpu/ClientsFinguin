@@ -54,6 +54,15 @@ const NOTE_MARKER = /\s*`\(i\)`\s*$/;
 const ASIDE = /\s*\*\(([^)]+)\)\*\s*$/;
 const GATE = /^\*\*(.+)\*\*$/;
 
+// Строки заметки склеиваются пробелом, но пункт списка «- …» начинается с новой строки:
+// интерфейс показывает заметку с сохранением переносов.
+function joinNote(lines: string[]) {
+  return lines.reduce((text, line, index) => {
+    if (index === 0) return line;
+    return text + (line.startsWith("- ") ? "\n" : " ") + line;
+  }, "");
+}
+
 type Continuation =
   | { kind: "item"; item: TemplateCheckpoint }
   | { kind: "premise" }
@@ -179,7 +188,7 @@ export function parseTypicalTasks(markdown: string): TypicalTaskTemplate[] {
     const note = notes.get(item.code);
     if (hasNoteMarker && !note) throw new TypicalTasksFormatError(line, "пункт " + item.code + " помечен (i), но заметки к нему нет");
     if (note && !hasNoteMarker) throw new TypicalTasksFormatError(note.line, "заметка к пункту " + item.code + ", который не помечен (i)");
-    if (note) { item.noteTitle = note.title; item.note = note.text.join(" "); }
+    if (note) { item.noteTitle = note.title; item.note = joinNote(note.text); }
   }
   for (const [code, note] of notes) {
     if (!itemLines.has(code)) throw new TypicalTasksFormatError(note.line, "заметка к несуществующему пункту " + code);

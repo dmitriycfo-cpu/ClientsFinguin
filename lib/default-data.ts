@@ -167,3 +167,11 @@ export const DEFAULT_DATA: DashboardData = {
     }
   ]
 };
+
+/** Стартовые данные новой карты: название клиента — из CLIENT_NAME (ставит /new-roadmap). */
+export function initialData(clientName: string | undefined = process.env.CLIENT_NAME): DashboardData {
+  const data = structuredClone(DEFAULT_DATA);
+  const name = clientName?.trim();
+  if (name) data.clientName = name.slice(0, 160);
+  return data;
+}

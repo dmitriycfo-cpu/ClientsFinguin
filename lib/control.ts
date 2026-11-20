@@ -1,6 +1,6 @@
 import { addDays, startOfWeek } from "./dates";
 
-export type ControlItemId = "meet" | "plan" | "week" | "client" | "regular" | "reports";
+export type ControlItemId = "minute" | "meet" | "plan" | "week" | "client" | "regular" | "reports";
 export type ControlMark = "ok" | "bad";
 export type ControlQuestionId = "done" | "shifts" | "plan";
 
@@ -29,6 +29,18 @@ export interface ControlItem {
 export const CONTROL_WEEKS = 8;
 
 export const CONTROL_ITEMS: ControlItem[] = [
+  {
+    id: "minute",
+    title: "Карта читается за минуту",
+    where: "Дорожная карта, фильтр «Все»",
+    points: [
+      "Надзадач в работе не больше шести.",
+      "Каждая надзадача названа результатом, понятным клиенту: «Управленческая отчётность», а не «Работы по ОПиУ».",
+      "Завершённое закрыто и убрано в архив, в карте нет брошенных задач.",
+      "Сроки и статусы актуальны: по диаграмме видно, где работа сейчас.",
+      "Человек со стороны за минуту отвечает: что делаем, что уже сделано и что дальше.",
+    ],
+  },
   {
     id: "meet",
     title: "Встречи с клиентом",

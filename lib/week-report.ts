@@ -4,8 +4,10 @@ import { plural } from "./plural";
 import { isTaskCompleted, isWorkTask } from "./roadmap-pulse";
 import { isPostponed } from "./postpone";
 import { endDateAt } from "./task-shifts";
+import { checkpointDate } from "./checkpoint-dates";
+import { getPlannedDates, occurrenceStatus, type RegularStatus } from "./regular-schedule";
 import { taskCheckpoints } from "./typical-tasks";
-import type { Checkpoint, Task, TaskShift } from "./types";
+import type { Checkpoint, RegularRecord, RegularTask, Task, TaskShift } from "./types";
 
 export interface WeekReport {
   weekStart: string;
@@ -57,14 +59,25 @@ export function weekReport(tasks: Task[], weekStart: string, today: string): Wee
       return { task, endDate, daysLate: differenceInDays(endDate, asOf), openItems: taskCheckpoints(task).filter((item) => !item.done) };
     });
 
+  // План привязан к датам следующей недели. Спринт, который на ней идёт, — с открытыми пунктами
+  // без даты и с датой не позже конца недели (просроченные тоже). Из остальных спринтов — только
+  // пункты с плановой датой на следующей неделе. Пункты на более поздние недели ждут своей недели.
   const next = live
-    .filter((task) => !isTaskCompleted(task) && task.startDate <= nextEnd && task.endDate >= nextStart)
-    .sort((a, b) => a.startDate.localeCompare(b.startDate))
+    .filter((task) => !isTaskCompleted(task))
     .map((task) => {
+      const running = task.startDate <= nextEnd && task.endDate >= nextStart;
       const open = taskCheckpoints(task).filter((item) => !item.done);
-      const dated = open.filter((item) => item.date && item.date >= nextStart && item.date <= nextEnd).sort((a, b) => a.date!.localeCompare(b.date!));
-      return { task, items: [...dated, ...open.filter((item) => !dated.includes(item))] };
-    });
+      const dated = open
+        .filter((item) => checkpointDate(item) && checkpointDate(item) <= nextEnd && (running || checkpointDate(item) >= nextStart))
+        .sort((a, b) => checkpointDate(a).localeCompare(checkpointDate(b)));
+      const undated = running ? open.filter((item) => !checkpointDate(item)) : [];
+      const sortKey = [running ? (task.startDate > nextStart ? task.startDate : nextStart) : "", dated[0] ? checkpointDate(dated[0]) : ""]
+        .filter(Boolean).sort()[0] ?? task.startDate;
+      return { task, items: [...dated, ...undated], running, sortKey };
+    })
+    .filter((entry) => entry.running || entry.items.length > 0)
+    .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+    .map(({ task, items }) => ({ task, items }));
 
   // Отложенные — сами задачи со статусом «Отложено» (спринты отложенной надзадачи не дублируем).
   const postponed = tasks
@@ -80,6 +93,58 @@ export function weekReport(tasks: Task[], weekStart: string, today: string): Wee
     done, doneCount, closedCount, shifts, stuck, next, postponed,
     noMovement: doneCount === 0 && closedCount === 0 && shifts.length === 0 && !postponed.some((entry) => entry.isNew),
   };
+}
+
+export interface RegularOccurrence {
+  task: RegularTask;
+  parent?: RegularTask;
+  date: string;
+  record?: RegularRecord;
+  status: WeekRegularStatus;
+}
+
+// «Не сделано» — отметка стоит, но после конца недели: на той неделе повтор не выполнен.
+export type WeekRegularStatus = RegularStatus | "Не сделано";
+
+export interface RegularWeek {
+  week: RegularOccurrence[];
+  next: RegularOccurrence[];
+  doneCount: number;
+  // Не сделано в срок: просрочено или выполнено позже плана.
+  missedCount: number;
+}
+
+function regularOccurrences(regularTasks: RegularTask[], from: string, to: string, today: string): RegularOccurrence[] {
+  const months = new Set([from, to].map((date) => date.slice(0, 8) + "01"));
+  const todayDate = parseDate(today);
+  return regularTasks
+    .flatMap((task) => [...months].flatMap((month) => getPlannedDates(task, month)).filter((date) => date >= from && date <= to).map((date) => ({
+      task,
+      parent: task.parentId ? regularTasks.find((item) => item.id === task.parentId) : undefined,
+      date,
+      record: task.records[date],
+      status: (task.records[date]?.actualDate ?? "") > to ? "Не сделано" as const : occurrenceStatus(date, task.records[date], todayDate),
+    })))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// Повторы регулярных задач на неделе и на следующей. Отметка хранит фактическую дату, поэтому
+// статус считается на конец недели: сделанное после неё на этой неделе не засчитывается.
+export function regularWeek(regularTasks: RegularTask[], weekStart: string, today: string): RegularWeek {
+  const week = regularOccurrences(regularTasks, weekStart, addDays(weekStart, 6), today);
+  const next = regularOccurrences(regularTasks, addDays(weekStart, 7), addDays(weekStart, 13), today);
+  return {
+    week,
+    next,
+    doneCount: week.filter((item) => item.status === "Выполнено" || item.status === "С опозданием").length,
+    missedCount: week.filter((item) => item.status === "Просрочено" || item.status === "С опозданием" || item.status === "Не сделано").length,
+  };
+}
+
+// Галочка на вкладке «Неделя»: ставит фактическую дату «сегодня» или снимает её; примечание не трогаем.
+export function toggleRegularOccurrence(task: RegularTask, date: string, today: string): RegularTask {
+  const record = task.records[date] ?? { actualDate: "", note: "" };
+  return { ...task, records: { ...task.records, [date]: { ...record, actualDate: record.actualDate ? "" : today } } };
 }
 
 export function weekBounds(tasks: Task[], today: string) {

@@ -14,9 +14,9 @@ import {
 import type { ControlData } from "./control";
 
 describe("пункты чек-листа", () => {
-  it("шесть пунктов с уникальными кодами и подсказками", () => {
-    expect(CONTROL_ITEMS).toHaveLength(6);
-    expect(new Set(CONTROL_ITEMS.map((item) => item.id)).size).toBe(6);
+  it("семь пунктов с уникальными кодами и подсказками", () => {
+    expect(CONTROL_ITEMS).toHaveLength(7);
+    expect(new Set(CONTROL_ITEMS.map((item) => item.id)).size).toBe(7);
     expect(CONTROL_ITEMS.every((item) => item.where && item.points.length > 0)).toBe(true);
   });
 });

@@ -3,7 +3,7 @@ import "server-only";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { neon } from "@neondatabase/serverless";
-import { DEFAULT_DATA } from "./default-data";
+import { DEFAULT_DATA, initialData } from "./default-data";
 import { linkLegacyMeetingSeries } from "./meeting-series";
 import type { Baselines, DashboardData, Task } from "./types";
 
@@ -179,7 +179,7 @@ async function ensureTable() {
 export async function getDashboardData(): Promise<DashboardData> {
   const sql = await ensureTable();
   if (sql) {
-    const seed = JSON.stringify(DEFAULT_DATA);
+    const seed = JSON.stringify(initialData());
     await sql`INSERT INTO dashboard_state (id, data)
       VALUES (1, ${seed}::jsonb)
       ON CONFLICT (id) DO NOTHING`;
@@ -192,9 +192,10 @@ export async function getDashboardData(): Promise<DashboardData> {
   try {
     return normalizeDashboardData(JSON.parse(await fs.readFile(localDataPath, "utf8")) as Partial<DashboardData>);
   } catch {
+    const seed = initialData();
     await fs.mkdir(path.dirname(localDataPath), { recursive: true });
-    await fs.writeFile(localDataPath, JSON.stringify(DEFAULT_DATA, null, 2), "utf8");
-    return structuredClone(DEFAULT_DATA);
+    await fs.writeFile(localDataPath, JSON.stringify(seed, null, 2), "utf8");
+    return seed;
   }
 }
 

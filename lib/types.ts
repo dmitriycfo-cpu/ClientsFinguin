@@ -57,7 +57,11 @@ export interface RegularTask {
   frequency: RegularFrequency;
   anchorDate: string;
   description: string;
+  // Факт и примечание по плановой дате повтора (с учётом переноса).
   records: Record<string, RegularRecord>;
+  // Исключения из расписания: дата по расписанию → новая дата в том же месяце;
+  // пустая строка — повтор убран (например, из-за праздников).
+  overrides?: Record<string, string>;
 }
 
 export type ShiftReason = "client" | "fd" | "priority" | "blocker" | "other";
@@ -179,6 +183,6 @@ export interface DashboardData {
   // Ручные отметки закрытия месяца: «ГГГГ-ММ» закрываемого месяца → день закрытия.
   // Если отметка есть, она главнее расчёта по ежемесячным регулярным задачам.
   monthClosings?: Record<string, string>;
-  // Резюме недели: понедельник «ГГГГ-ММ-ДД» → несколько строк о том, что происходило.
+  // Резюме недели во вкладке «Неделя»: понедельник недели «ГГГГ-ММ-ДД» → текст.
   weekNotes?: Record<string, string>;
 }
