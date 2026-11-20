@@ -1,0 +1,85 @@
+# Выкладка всех карт финдиров (аккаунт Vercel dmitriycfo) — по push в main,
+# вручную и из sync-upstream.yml после подтягивания обновлений Артёма.
+# Работает только в форке dmitriycfo-cpu/ClientsFinguin.
+# Сборка идёт здесь, в Actions, Vercel получает готовую (--prebuilt): так
+# Vercel не блокирует выкладку из-за автора коммита и не зависит от того,
+# доходят ли до него события GitHub (с 21.08.2026 не доходят).
+# Нужен секрет репозитория VERCEL_TOKEN (vercel.com/account/tokens).
+name: Выкладка карт финдиров
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: finders-production
+  cancel-in-progress: false
+
+env:
+  VERCEL_ORG_ID: team_exHqOtQNR0KyG6haKuSzQgBA
+
+jobs:
+  test:
+    if: github.repository == 'dmitriycfo-cpu/ClientsFinguin'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Тесты
+        run: pnpm test
+      - name: Типы и линтер
+        run: |
+          npx tsc --noEmit
+          pnpm lint
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        include:
+          - { name: clients-finguin,             id: prj_7Rz48zTQQIJTjH0aNdDRb884esAy }
+          - { name: clients-finguin-220,         id: prj_6x2nMcPdgvbSvtZwbZPuuamGAnll }
+          - { name: clients-finguin-radju,       id: prj_enqf1SVT2vGqiQwY5xN55YUPYVb0 }
+          - { name: clients-finguin-dmitry,      id: prj_9IJqh8bSncdH1YBF9YoHC0AI8Nnj }
+          - { name: clients-finguin-nazarova,    id: prj_ERw4l3BRGZVxKa47FmzTcehpJu8n }
+          - { name: clients-finguin-antrikot,    id: prj_dYD3DkZxZI9B6YFyCyFjqSphC68B }
+          - { name: clients-finguin-chernogorov, id: prj_5sCbe9HngazpF37DEn6zmNuyC289 }
+          - { name: clients-finguin-rkkopi,      id: prj_BOs9Pk5SEAzJjUKGJ6LcUguaKwGf }
+          - { name: clients-finguin-inside,      id: prj_w4Zb0A6uuMXU6JQDfvHYc6TI32Gr }
+          - { name: clients-finguin-tsukanov,    id: prj_yeFiYaNaUxstiqiWvU1Iz1nLzep3 }
+          - { name: clients-finguin-bakhrom,     id: prj_ZdWPW1OlZhBWV5e9Ydro7eCZPBBL }
+          - { name: clients-finguin-kts,         id: prj_mS1cGVAFKGFwM1XKxD5ukFBmFio9 }
+          - { name: clients-finguin-ezj7,        id: prj_iJHihp46l8t8J0WaaGncYiRelzDl }
+    name: ${{ matrix.name }}
+    env:
+      VERCEL_PROJECT_ID: ${{ matrix.id }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Настройки и переменные проекта
+        run: npx --yes vercel@64.5.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - name: Сборка
+        run: npx --yes vercel@64.5.0 build --prod --token="$VERCEL_TOKEN"
+      - name: Выкладка
+        run: npx --yes vercel@64.5.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN"

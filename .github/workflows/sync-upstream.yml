@@ -1,0 +1,89 @@
+# Раз в день подтягивает main из репозитория Артёма (dikushinwork-code/ClientsFinguin).
+# Слилось без конфликтов и проверки прошли — пушит в main и выкладывает все карты.
+# Конфликт или ошибка — ничего не пушит и заводит issue «Не удалось подтянуть
+# обновления Артёма»: тогда слить вручную (попросить Claude).
+name: Обновления от Артёма
+
+on:
+  schedule:
+    - cron: "0 4 * * *" # 07:00 по Москве
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'dmitriycfo-cpu/ClientsFinguin'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      pushed: ${{ steps.push.outputs.pushed }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Слияние с upstream
+        id: merge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/dikushinwork-code/ClientsFinguin.git
+          git fetch upstream main
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Новых коммитов у Артёма нет"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git log --oneline HEAD..upstream/main
+          if ! git merge --no-edit upstream/main -m "Подтянуть обновления Артёма (upstream/main)"; then
+            git diff --name-only --diff-filter=U > conflicts.txt
+            git merge --abort
+            echo "Конфликт в файлах:"; cat conflicts.txt
+            exit 1
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@v6
+        if: steps.merge.outputs.changed == 'true'
+      - uses: actions/setup-node@v7
+        if: steps.merge.outputs.changed == 'true'
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Проверки
+        if: steps.merge.outputs.changed == 'true'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm test
+          npx tsc --noEmit
+          pnpm lint
+          pnpm build
+      - name: Пуш в main
+        id: push
+        if: steps.merge.outputs.changed == 'true'
+        run: |
+          git push origin HEAD:main
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+      - name: Завести issue о сбое
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Не удалось подтянуть обновления Артёма"
+          body="Запуск: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ -s conflicts.txt ]; then body="$body"$'\n\nКонфликт в файлах:\n'"$(sed 's/^/- /' conflicts.txt)"; fi
+          body="$body"$'\n\nНичего не выложено. Слить upstream/main вручную.'
+          existing=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then gh issue comment "$existing" --body "$body"; else gh issue create --title "$title" --body "$body"; fi
+
+  deploy:
+    needs: sync
+    if: needs.sync.outputs.pushed == 'true'
+    uses: ./.github/workflows/deploy-fork.yml
+    secrets: inherit
